@@ -1,0 +1,6 @@
+{
+  "name": "Virtual Watch Gallery",
+  "description": "A luxury virtual watch collector's showcase with interactive real-time horological rendering, dynamic watch cases, and comprehensive facts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

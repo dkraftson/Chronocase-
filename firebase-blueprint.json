@@ -1,0 +1,91 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Collector profile details and sync preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "description": "User email" },
+        "displayName": { "type": "string", "description": "Display name" },
+        "photoURL": { "type": "string", "description": "Avatar photo URL" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp" }
+      },
+      "required": ["userId"]
+    },
+    "UserWatchCollection": {
+      "title": "User Watch Collection",
+      "description": "User custom collection vitrine box",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "icon": { "type": "string" },
+        "themeColor": { "type": "string" },
+        "caseSettings": { "type": "object" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "name"]
+    },
+    "UserWatch": {
+      "title": "User Watch Item",
+      "description": "Individual timepiece in user vitrine",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "collectionId": { "type": "string" },
+        "name": { "type": "string" },
+        "brand": { "type": "string" },
+        "reference": { "type": "string" },
+        "category": { "type": "string" },
+        "yearIntroduced": { "type": "string" },
+        "movement": { "type": "object" },
+        "renderingConfig": { "type": "object" },
+        "facts": { "type": "object" },
+        "collectorNotes": { "type": "string" },
+        "customEngraving": { "type": "string" },
+        "userFavorite": { "type": "boolean" },
+        "dateAdded": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "name", "brand", "reference"]
+    },
+    "UserCaseSettings": {
+      "title": "User Case Settings",
+      "description": "Custom vitrine materials and lighting preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "material": { "type": "string" },
+        "cushionColor": { "type": "string" },
+        "lighting": { "type": "string" },
+        "soundEnabled": { "type": "boolean" },
+        "columns": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile document"
+    },
+    "users/{userId}/collections/{collectionId}": {
+      "schema": "UserWatchCollection",
+      "description": "User's customized watch collections"
+    },
+    "users/{userId}/watches/{watchId}": {
+      "schema": "UserWatch",
+      "description": "User's individual saved timepieces"
+    },
+    "users/{userId}/settings/caseSettings": {
+      "schema": "UserCaseSettings",
+      "description": "User's vitrine showcase visual settings"
+    }
+  }
+}

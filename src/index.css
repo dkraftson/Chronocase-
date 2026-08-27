@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+/* Custom Sleek Horological Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(20, 20, 20, 0.7);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(217, 119, 6, 0.45);
+  border-radius: 9999px;
+  border: 2px solid rgba(20, 20, 20, 0.7);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 158, 11, 0.8);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(217, 119, 6, 0.5) rgba(20, 20, 20, 0.7);
+}

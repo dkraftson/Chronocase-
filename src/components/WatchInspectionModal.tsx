@@ -1,7 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Watch, StrapType, BezelMaterial, ChatMessage, WatchCollection } from "../types";
 import { WatchRenderer } from "./WatchRenderer";
 import { MovementExhibition } from "./MovementExhibition";
+import { WristPresenceStudio } from "./WristPresenceStudio";
+import { HorologicalSoulRadar } from "./HorologicalSoulRadar";
+import { HorologicalTimegrapher } from "./HorologicalTimegrapher";
+import { sanitizeWatch } from "../utils/watchUtils";
 import {
   X,
   RotateCw,
@@ -29,6 +33,17 @@ import {
   Disc,
   Feather,
   CircleDot,
+  Heart,
+  Sliders,
+  Play,
+  Square,
+  RotateCcw,
+  Gauge,
+  Shirt,
+  Search,
+  Activity,
+  Lightbulb,
+  Camera,
 } from "lucide-react";
 import { horologyAudio } from "../utils/audio";
 import { STYLE_METADATA, MOVEMENT_METADATA } from "../utils/styleAndMovement";
@@ -43,21 +58,54 @@ interface WatchInspectionModalProps {
 }
 
 export const WatchInspectionModal: React.FC<WatchInspectionModalProps> = ({
-  watch,
+  watch: watchRaw,
   collections = [],
   onClose,
   onUpdateWatch,
   onDeleteWatch,
 }) => {
+  const watch = useMemo(() => sanitizeWatch(watchRaw), [watchRaw]);
   const [activeTab, setActiveTab] = useState<
-    "style_movement" | "caseback" | "facts" | "specs" | "lore" | "watchmaker" | "notes"
+    | "style_movement"
+    | "wrist_studio"
+    | "soul_personality"
+    | "timegrapher"
+    | "caseback"
+    | "facts"
+    | "specs"
+    | "lore"
+    | "photo_provenance"
+    | "watchmaker"
+    | "notes"
   >("style_movement");
   const [viewMode, setViewMode] = useState<"front" | "back">("front");
   const [isLumeMode, setIsLumeMode] = useState(false);
-  const [selectedStrap, setSelectedStrap] = useState<StrapType>(watch.renderingConfig.strapType);
+  const [selectedStrap, setSelectedStrap] = useState<StrapType>(watch.renderingConfig?.strapType || "leather_alligator");
   const [bezelAngle, setBezelAngle] = useState(0);
   const [isTicking, setIsTicking] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // 4x Macro Loupe & Light Angle Sweep State
+  const [isMacroLoupeActive, setIsMacroLoupeActive] = useState(false);
+  const [isLightSweepActive, setIsLightSweepActive] = useState(false);
+  const [lightSweepPos, setLightSweepPos] = useState({ x: 50, y: 50 }); // percentage
+
+  // Interactive Complications State
+  const [powerReserve, setPowerReserve] = useState<number>(75);
+  const [isChronoRunning, setIsChronoRunning] = useState<boolean>(false);
+  const [chronoElapsedSeconds, setChronoElapsedSeconds] = useState<number>(0);
+  const [isRotorSpinning, setIsRotorSpinning] = useState<boolean>(false);
+
+  // Chronograph timer interval
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isChronoRunning) {
+      interval = setInterval(() => {
+        setChronoElapsedSeconds((prev) => prev + 0.2);
+      }, 200);
+    }
+    return () => clearInterval(interval);
+  }, [isChronoRunning]);
 
   // Ask Watchmaker Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -267,19 +315,57 @@ export const WatchInspectionModal: React.FC<WatchInspectionModalProps> = ({
 
               {/* Lume Mode Glow Toggle (front view only) */}
               {viewMode === "front" && (
-                <button
-                  id="toggle-lume-mode-btn"
-                  onClick={() => setIsLumeMode((prev) => !prev)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                    isLumeMode
-                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 animate-pulse"
-                      : "bg-neutral-900 text-neutral-400 border-neutral-700 hover:text-emerald-400"
-                  }`}
-                  title="Super-LumiNova Dark Glow Test"
-                >
-                  {isLumeMode ? <Sun size={13} /> : <Moon size={13} />}
-                  <span>Lume Test</span>
-                </button>
+                <>
+                  <button
+                    id="toggle-lume-mode-btn"
+                    onClick={() => setIsLumeMode((prev) => !prev)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                      isLumeMode
+                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 animate-pulse"
+                        : "bg-neutral-900 text-neutral-400 border-neutral-700 hover:text-emerald-400"
+                    }`}
+                    title="Super-LumiNova Dark Glow Test"
+                  >
+                    {isLumeMode ? <Sun size={13} /> : <Moon size={13} />}
+                    <span>Lume</span>
+                  </button>
+
+                  {/* 4x Optical Macro Loupe */}
+                  <button
+                    id="toggle-macro-loupe-btn"
+                    onClick={() => {
+                      setIsMacroLoupeActive((prev) => !prev);
+                      horologyAudio.playCrownClick();
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                      isMacroLoupeActive
+                        ? "bg-amber-500/25 text-amber-300 border-amber-400 shadow-md shadow-amber-500/20 ring-1 ring-amber-400/40"
+                        : "bg-neutral-900 text-neutral-400 border-neutral-700 hover:text-amber-300"
+                    }`}
+                    title="4x Optical Macro Magnifier Loupe"
+                  >
+                    <Search size={13} className="text-amber-400" />
+                    <span>4x Loupe</span>
+                  </button>
+
+                  {/* Dynamic Light Sweep */}
+                  <button
+                    id="toggle-light-sweep-btn"
+                    onClick={() => {
+                      setIsLightSweepActive((prev) => !prev);
+                      horologyAudio.playCrownClick();
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                      isLightSweepActive
+                        ? "bg-amber-500/25 text-amber-300 border-amber-400 shadow-md shadow-amber-500/20 ring-1 ring-amber-400/40"
+                        : "bg-neutral-900 text-neutral-400 border-neutral-700 hover:text-amber-300"
+                    }`}
+                    title="Dynamic Light Angle Specular Sweep"
+                  >
+                    <Lightbulb size={13} className="text-amber-400" />
+                    <span>Light Sweep</span>
+                  </button>
+                </>
               )}
             </div>
 
@@ -330,11 +416,30 @@ export const WatchInspectionModal: React.FC<WatchInspectionModalProps> = ({
 
           {/* Interactive 3D Watch Stage with Smooth Flip Transition */}
           <div
-            className={`relative w-full flex-1 flex flex-col items-center justify-center min-h-[380px] sm:min-h-[440px] rounded-3xl transition-colors duration-500 overflow-hidden ${
+            onMouseMove={(e) => {
+              if (isLightSweepActive || isMacroLoupeActive) {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = ((e.clientX - rect.left) / rect.width) * 100;
+                const y = ((e.clientY - rect.top) / rect.height) * 100;
+                setLightSweepPos({ x, y });
+              }
+            }}
+            className={`relative w-full flex-1 flex flex-col items-center justify-center min-h-[380px] sm:min-h-[440px] rounded-3xl transition-colors duration-500 overflow-hidden select-none ${
               isLumeMode ? "bg-black" : "bg-gradient-to-b from-neutral-900/50 via-neutral-950/80 to-black"
             }`}
             style={{ perspective: "1200px" }}
           >
+            {/* Dynamic Light Sweep Specular Spotlight */}
+            {isLightSweepActive && (
+              <div
+                className="absolute w-72 h-72 rounded-full pointer-events-none transition-all duration-75 blur-3xl opacity-60 mix-blend-screen bg-gradient-to-tr from-amber-300/40 via-white/50 to-transparent -translate-x-1/2 -translate-y-1/2 z-20"
+                style={{
+                  left: `${lightSweepPos.x}%`,
+                  top: `${lightSweepPos.y}%`,
+                }}
+              />
+            )}
+
             {/* Ambient Stage Lighting Glow */}
             <div
               className={`absolute inset-0 pointer-events-none transition-opacity duration-700 ${
@@ -348,7 +453,9 @@ export const WatchInspectionModal: React.FC<WatchInspectionModalProps> = ({
 
             {/* 3D Flip Card Container */}
             <div
-              className="relative w-full flex items-center justify-center transition-all duration-700 ease-out"
+              className={`relative w-full flex items-center justify-center transition-all duration-700 ease-out ${
+                isMacroLoupeActive ? "scale-125 transition-transform" : ""
+              }`}
               style={{
                 transformStyle: "preserve-3d",
               }}
@@ -363,7 +470,7 @@ export const WatchInspectionModal: React.FC<WatchInspectionModalProps> = ({
                       watch.renderingConfig.caseBezelType === "diver_60" ||
                       watch.renderingConfig.caseBezelType === "gmt_24"
                     }
-                    interactiveTilt={true}
+                    interactiveTilt={!isMacroLoupeActive}
                     customStrap={selectedStrap}
                     bezelAngleOffset={bezelAngle}
                     onBezelRotate={(angle) => setBezelAngle(angle)}
@@ -375,6 +482,26 @@ export const WatchInspectionModal: React.FC<WatchInspectionModalProps> = ({
                 </div>
               )}
             </div>
+
+            {/* 4x Optical Macro Magnifier Loupe Crosshairs Overlay */}
+            {isMacroLoupeActive && (
+              <div
+                className="absolute w-44 h-44 rounded-full border-2 border-amber-400 shadow-[0_0_40px_rgba(251,191,36,0.4)] pointer-events-none -translate-x-1/2 -translate-y-1/2 transition-all duration-75 flex items-center justify-center z-30"
+                style={{
+                  left: `${lightSweepPos.x}%`,
+                  top: `${lightSweepPos.y}%`,
+                  backdropFilter: "contrast(115%) brightness(110%)",
+                }}
+              >
+                {/* Crosshairs & Reticle */}
+                <div className="absolute inset-0 rounded-full border border-amber-400/40" />
+                <div className="w-full h-px bg-amber-400/40" />
+                <div className="h-full w-px bg-amber-400/40 absolute" />
+                <span className="absolute bottom-2 text-[9px] font-mono text-amber-300 font-bold bg-black/90 px-1.5 rounded border border-amber-500/40">
+                  4X MACRO LOUPE
+                </span>
+              </div>
+            )}
 
             {/* Floating Turn Over / Flip Pill Badge */}
             <button
@@ -398,6 +525,133 @@ export const WatchInspectionModal: React.FC<WatchInspectionModalProps> = ({
                   Drag outer bezel to rotate elapsed timer
                 </div>
               )}
+          </div>
+
+          {/* REAL-TIME HOROLOGICAL COMPLICATIONS & TACTILE DECK */}
+          <div className="w-full mt-3 p-3 rounded-2xl bg-neutral-950/80 border border-neutral-800/80 shadow-inner space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 font-mono flex items-center gap-1.5">
+                <Gauge size={13} />
+                <span>Tactile Complications & ASMR</span>
+              </span>
+              <span className="text-[10px] font-mono text-neutral-400">
+                Acoustic & Mechanical Simulation
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              {/* 1. Crown Winding & Power Reserve */}
+              <button
+                type="button"
+                id="tactile-wind-crown-btn"
+                onClick={() => {
+                  horologyAudio.unlockContext();
+                  horologyAudio.playWindingRatchet();
+                  setPowerReserve((prev) => Math.min(100, prev + 15));
+                }}
+                className="flex flex-col items-center justify-center p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800/90 text-neutral-300 hover:text-amber-300 border border-neutral-800 hover:border-amber-500/40 transition-all group"
+                title="Wind Mainspring Crown (Ratcheting Click Feedback)"
+              >
+                <div className="flex items-center gap-1 font-mono text-[11px] font-bold text-amber-400 group-hover:scale-105 transition-transform">
+                  <RotateCw size={12} className="text-amber-400" />
+                  <span>Wind Crown</span>
+                </div>
+                <div className="w-full bg-neutral-800 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                  <div
+                    className="bg-amber-400 h-full rounded-full transition-all duration-300"
+                    style={{ width: `${powerReserve}%` }}
+                  />
+                </div>
+                <span className="text-[9px] text-neutral-400 mt-1 font-mono">
+                  {powerReserve}% Stored
+                </span>
+              </button>
+
+              {/* 2. Chronograph Start/Stop Pusher (2 O'clock) */}
+              <button
+                type="button"
+                id="tactile-chrono-start-btn"
+                onClick={() => {
+                  horologyAudio.unlockContext();
+                  horologyAudio.playPusherClick();
+                  setIsChronoRunning((prev) => !prev);
+                }}
+                className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${
+                  isChronoRunning
+                    ? "bg-amber-500/20 border-amber-500 text-amber-300 font-bold shadow-md shadow-amber-500/10"
+                    : "bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-amber-300 border-neutral-800 hover:border-neutral-700"
+                }`}
+                title="2 o'clock Tactile Column-Wheel Pusher"
+              >
+                <div className="flex items-center gap-1 font-mono text-[11px] font-bold">
+                  {isChronoRunning ? <Square size={11} className="text-amber-400 fill-amber-400" /> : <Play size={11} className="text-amber-400" />}
+                  <span>{isChronoRunning ? "Stop Pusher" : "Start Chrono"}</span>
+                </div>
+                <span className="text-[10px] font-mono text-neutral-200 mt-1">
+                  {Math.floor(chronoElapsedSeconds / 60)
+                    .toString()
+                    .padStart(2, "0")}
+                  :{(chronoElapsedSeconds % 60).toFixed(1).padStart(4, "0")}s
+                </span>
+                <span className="text-[9px] text-neutral-400 mt-0.5 font-mono">
+                  2 O'Clock Pusher
+                </span>
+              </button>
+
+              {/* 3. Chronograph Flyback / Reset Pusher (4 O'clock) */}
+              <button
+                type="button"
+                id="tactile-chrono-reset-btn"
+                onClick={() => {
+                  horologyAudio.unlockContext();
+                  horologyAudio.playFlybackReset();
+                  setIsChronoRunning(false);
+                  setChronoElapsedSeconds(0);
+                }}
+                className="flex flex-col items-center justify-center p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-amber-300 border border-neutral-800 hover:border-neutral-700 transition-all"
+                title="4 o'clock Tactile Heart-Cam Reset Pusher"
+              >
+                <div className="flex items-center gap-1 font-mono text-[11px] font-bold text-neutral-200">
+                  <RotateCcw size={11} className="text-amber-400" />
+                  <span>Reset Pusher</span>
+                </div>
+                <span className="text-[10px] font-mono text-neutral-400 mt-1">
+                  Flyback Snap
+                </span>
+                <span className="text-[9px] text-neutral-400 mt-0.5 font-mono">
+                  4 O'Clock Pusher
+                </span>
+              </button>
+
+              {/* 4. Automatic Rotor Gyro Wobble */}
+              <button
+                type="button"
+                id="tactile-rotor-spin-btn"
+                onClick={() => {
+                  horologyAudio.unlockContext();
+                  horologyAudio.playRotorWobble();
+                  setIsRotorSpinning(true);
+                  setTimeout(() => setIsRotorSpinning(false), 1200);
+                }}
+                className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${
+                  isRotorSpinning
+                    ? "bg-amber-500/20 border-amber-500 text-amber-300 font-bold"
+                    : "bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-amber-300 border-neutral-800 hover:border-neutral-700"
+                }`}
+                title="Automatic Winding Rotor Gyroscopic Spin ASMR"
+              >
+                <div className="flex items-center gap-1 font-mono text-[11px] font-bold text-amber-300">
+                  <Disc size={12} className={`text-amber-400 ${isRotorSpinning ? "animate-spin" : ""}`} />
+                  <span>Spin Rotor</span>
+                </div>
+                <span className="text-[10px] font-mono text-neutral-300 mt-1">
+                  Ball-Bearing
+                </span>
+                <span className="text-[9px] text-neutral-400 mt-0.5 font-mono">
+                  Gyroscopic ASMR
+                </span>
+              </button>
+            </div>
           </div>
 
           {/* Interactive Dial Color, Case Finish & Strap Customizer Bar */}
@@ -678,6 +932,32 @@ export const WatchInspectionModal: React.FC<WatchInspectionModalProps> = ({
                 <span>{viewMode === "front" ? "Inspect Back" : "Inspect Dial"}</span>
               </button>
 
+              {/* Vitrine Selector */}
+              {collections && collections.length > 0 && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-neutral-900 border border-neutral-700 hover:border-amber-500/40 transition-all">
+                  <Folder size={11} className="text-amber-400" />
+                  <select
+                    id="inspect-vitrine-select"
+                    value={watch.collectionId}
+                    onChange={(e) => {
+                      onUpdateWatch({
+                        ...watch,
+                        collectionId: e.target.value,
+                      });
+                      horologyAudio.playCrownClick();
+                    }}
+                    className="bg-transparent text-amber-200 text-xs focus:outline-none cursor-pointer pr-1"
+                    title="Change assigned Vitrine Collection"
+                  >
+                    {collections.map((c) => (
+                      <option key={c.id} value={c.id} className="bg-neutral-900 text-neutral-100">
+                        Vitrine: {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Delete Button (Direct Access in Header) */}
               {onDeleteWatch && (
                 <button
@@ -755,6 +1035,57 @@ export const WatchInspectionModal: React.FC<WatchInspectionModalProps> = ({
               <span>Style & Movement</span>
             </button>
 
+            {/* DEDICATED ON-WRIST SIMULATOR & ERGONOMICS TAB */}
+            <button
+              id="tab-wrist-studio-btn"
+              onClick={() => {
+                setActiveTab("wrist_studio");
+                if (viewMode === "back") setViewMode("front");
+              }}
+              className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                activeTab === "wrist_studio"
+                  ? "border-amber-500 text-amber-300 font-bold bg-amber-500/5"
+                  : "border-transparent text-neutral-400 hover:text-neutral-200"
+              }`}
+            >
+              <Sliders size={14} className="text-amber-400" />
+              <span>Wrist Studio</span>
+            </button>
+
+            {/* DEDICATED SOUL & PERSONALITY TAB */}
+            <button
+              id="tab-soul-personality-btn"
+              onClick={() => {
+                setActiveTab("soul_personality");
+                if (viewMode === "back") setViewMode("front");
+              }}
+              className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                activeTab === "soul_personality"
+                  ? "border-amber-500 text-amber-300 font-bold bg-amber-500/5"
+                  : "border-transparent text-neutral-400 hover:text-neutral-200"
+              }`}
+            >
+              <Heart size={14} className="text-rose-400" />
+              <span>Soul & Personality</span>
+            </button>
+
+            {/* DEDICATED ACOUSTIC TIMEGRAPHER DIAGNOSTICS TAB */}
+            <button
+              id="tab-timegrapher-btn"
+              onClick={() => {
+                setActiveTab("timegrapher");
+                if (viewMode === "back") setViewMode("front");
+              }}
+              className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                activeTab === "timegrapher"
+                  ? "border-emerald-500 text-emerald-300 font-bold bg-emerald-500/5"
+                  : "border-transparent text-neutral-400 hover:text-neutral-200"
+              }`}
+            >
+              <Activity size={14} className="text-emerald-400" />
+              <span>Timegrapher & Rate</span>
+            </button>
+
             {/* DEDICATED CASEBACK & MOVEMENT EXHIBITION TAB */}
             <button
               id="tab-caseback-btn"
@@ -814,6 +1145,23 @@ export const WatchInspectionModal: React.FC<WatchInspectionModalProps> = ({
               <span>Collector Lore</span>
             </button>
 
+            {/* Photo & Provenance Tab */}
+            <button
+              id="tab-photo-provenance-btn"
+              onClick={() => setActiveTab("photo_provenance")}
+              className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                activeTab === "photo_provenance"
+                  ? "border-amber-500 text-amber-300 font-bold bg-amber-500/5"
+                  : "border-transparent text-neutral-400 hover:text-neutral-200"
+              }`}
+            >
+              <Camera size={14} className={watch.scannedPhotoUrl ? "text-amber-400" : "text-neutral-500"} />
+              <span>Photo & Origin</span>
+              {watch.scannedPhotoUrl && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              )}
+            </button>
+
             <button
               id="tab-watchmaker-btn"
               onClick={() => setActiveTab("watchmaker")}
@@ -843,6 +1191,31 @@ export const WatchInspectionModal: React.FC<WatchInspectionModalProps> = ({
 
           {/* TAB CONTENTS (Scrollable) */}
           <div className="p-6 overflow-y-auto flex-1 space-y-6 text-neutral-300 text-sm">
+            {/* 1. ON-WRIST STUDIO & ERGONOMICS TAB */}
+            {activeTab === "wrist_studio" && (
+              <WristPresenceStudio
+                watch={watch}
+                customStrap={selectedStrap}
+                onClose={onClose}
+              />
+            )}
+
+            {/* 2. HOROLOGICAL SOUL, PERSONALITY & SENTIMENTAL PROVENANCE TAB */}
+            {activeTab === "soul_personality" && (
+              <HorologicalSoulRadar
+                watch={watch}
+                onUpdateWatch={onUpdateWatch}
+              />
+            )}
+
+            {/* 3. ACOUSTIC TIMEGRAPHER & POSITIONAL RATE DIAGNOSTICS TAB */}
+            {activeTab === "timegrapher" && (
+              <HorologicalTimegrapher
+                watch={watch}
+                onUpdateWatch={onUpdateWatch}
+              />
+            )}
+
             {/* 0. DEDICATED STYLE & MOVEMENT BREAKDOWN TAB */}
             {activeTab === "style_movement" && (
               <div className="space-y-6">
@@ -1204,6 +1577,60 @@ export const WatchInspectionModal: React.FC<WatchInspectionModalProps> = ({
                           {person}
                         </span>
                       ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 3.5. PHOTO PROVENANCE & OPTICAL ARCHIVE */}
+            {activeTab === "photo_provenance" && (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-400 font-mono flex items-center gap-1.5">
+                    <Camera size={14} />
+                    <span>Optical Provenance & Original Photo</span>
+                  </span>
+                  <span className="text-[11px] text-neutral-400 font-mono">
+                    {watch.scannedPhotoUrl ? "Photographic Record Attached" : "Generated Synthetically"}
+                  </span>
+                </div>
+
+                {watch.scannedPhotoUrl ? (
+                  <div className="space-y-4">
+                    <div className="p-3 bg-neutral-950 rounded-2xl border border-neutral-800 flex flex-col items-center justify-center overflow-hidden">
+                      <img
+                        src={watch.scannedPhotoUrl}
+                        alt={`Original photo of ${watch.brand} ${watch.name}`}
+                        className="max-h-72 w-auto object-contain rounded-xl shadow-lg border border-neutral-800"
+                      />
+                      <span className="text-[10px] text-neutral-400 mt-2 font-mono">
+                        Original Photo Archive • Digitize Source
+                      </span>
+                    </div>
+
+                    {watch.visionAnalysisNotes && (
+                      <div className="p-4 rounded-xl bg-neutral-900/60 border border-amber-500/30 space-y-1.5">
+                        <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                          <Sparkles size={13} />
+                          <span>Gemini Optical Inspection Analysis:</span>
+                        </span>
+                        <p className="text-xs text-neutral-300 leading-relaxed font-serif italic">
+                          "{watch.visionAnalysisNotes}"
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-8 text-center bg-neutral-950/60 rounded-2xl border border-neutral-800 space-y-3">
+                    <Camera size={36} className="mx-auto text-neutral-600" />
+                    <div className="space-y-1">
+                      <span className="text-xs font-semibold text-neutral-300 block">
+                        No Source Photo Attached
+                      </span>
+                      <p className="text-[11px] text-neutral-400 max-w-sm mx-auto">
+                        This timepiece was synthesized through text reference query or curated library archives. You can use the "Photo Scanner" tab next time you add a watch to attach a real photo!
+                      </p>
                     </div>
                   </div>
                 )}

@@ -1,7 +1,12 @@
 import { Watch, HorologySource } from "../types";
+import { COMPENDIUM_GROUP_A } from "./compendiumGroupA";
+import { COMPENDIUM_GROUP_B } from "./compendiumGroupB";
+import { COMPENDIUM_GROUP_C } from "./compendiumGroupC";
+import { COMPENDIUM_GROUP_D } from "./compendiumGroupD";
+import { COMPENDIUM_GROUP_E } from "./compendiumGroupE";
 
 export interface SourceMeta {
-  id: HorologySource;
+  id?: HorologySource;
   name: string;
   shortName: string;
   tagline: string;
@@ -9,8 +14,9 @@ export interface SourceMeta {
   badgeColor: string;
   badgeBg: string;
   badgeBorder: string;
-  iconName: string;
+  iconName?: string;
   description: string;
+  curatedCategoryFocus?: string;
 }
 
 export const HOROLOGY_SOURCES: Record<HorologySource, SourceMeta> = {
@@ -130,6 +136,19 @@ export const HOROLOGY_SOURCES: Record<HorologySource, SourceMeta> = {
     iconName: "database",
     description:
       "The encyclopedic technical database indexing over 40,000 reference numbers, manufacture caliber architecture, jewel counts, gear train layouts, and movement family lineages.",
+  },
+  everywatch: {
+    id: "everywatch",
+    name: "EVERYWATCH Global Market & Valuation Platform",
+    shortName: "EVERYWATCH",
+    tagline: "Live Global Auction Data, Market Indices & Real-Time Price Valuations",
+    badgeLabel: "🔍 EVERYWATCH Market Value",
+    badgeColor: "text-emerald-400",
+    badgeBg: "bg-emerald-950/70",
+    badgeBorder: "border-emerald-500/40",
+    iconName: "activity",
+    description:
+      "The premier market intelligence platform tracking over 500,000 transaction data points across global auction houses, retail platforms, and secondary dealers.",
   },
 };
 
@@ -547,7 +566,7 @@ export const SOURCE_CATALOG_WATCHES: Watch[] = [
     dateAdded: "2026-01-01T00:00:00.000Z",
   },
   {
-    id: "rolex-gmt-pepsi-126710blro",
+    id: "chrono24-rolex-gmt-pepsi-126710blro",
     name: "GMT-Master II 'Pepsi'",
     brand: "Rolex",
     reference: "126710BLRO",
@@ -2326,4 +2345,9 @@ export const SOURCE_CATALOG_WATCHES: Watch[] = [
     },
     dateAdded: "2026-01-01T00:00:00.000Z",
   },
+  ...COMPENDIUM_GROUP_A,
+  ...COMPENDIUM_GROUP_B,
+  ...COMPENDIUM_GROUP_C,
+  ...COMPENDIUM_GROUP_D,
+  ...COMPENDIUM_GROUP_E,
 ];

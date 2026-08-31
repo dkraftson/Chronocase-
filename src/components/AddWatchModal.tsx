@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Watch, WatchCategory, WatchCollection, HorologySource } from "../types";
 import { WatchRenderer } from "./WatchRenderer";
+import { WatchPhotoScanner } from "./WatchPhotoScanner";
 import {
   X,
   Sparkles,
@@ -24,6 +25,7 @@ import {
   Clock,
   Layers,
   ChevronRight,
+  Camera,
 } from "lucide-react";
 import { horologyAudio } from "../utils/audio";
 import { STYLE_METADATA, MOVEMENT_METADATA } from "../utils/styleAndMovement";
@@ -33,7 +35,7 @@ import { synthesizeWatchFromQuery } from "../data/fallbackHorology";
 interface AddWatchModalProps {
   collections: WatchCollection[];
   defaultCollectionId?: string;
-  initialMode?: "ai_search" | "source_catalogs";
+  initialMode?: "ai_search" | "source_catalogs" | "photo_scan";
   initialQuery?: string;
   onClose: () => void;
   onAddWatch: (watch: Watch) => void;
@@ -47,8 +49,8 @@ export const AddWatchModal: React.FC<AddWatchModalProps> = ({
   onClose,
   onAddWatch,
 }) => {
-  // Navigation Modes: "ai_search" vs "source_catalogs"
-  const [modalMode, setModalMode] = useState<"ai_search" | "source_catalogs">(initialMode);
+  // Navigation Modes: "photo_scan" vs "ai_search" vs "source_catalogs"
+  const [modalMode, setModalMode] = useState<"ai_search" | "source_catalogs" | "photo_scan">(initialMode);
   const [selectedSource, setSelectedSource] = useState<HorologySource | "all">("the_watch_revised");
   const [catalogSearch, setCatalogSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -322,6 +324,22 @@ export const AddWatchModal: React.FC<AddWatchModalProps> = ({
           {/* Mode Switcher Tabs */}
           <div className="flex items-center p-1 bg-neutral-950 rounded-2xl border border-neutral-800 self-start md:self-auto shrink-0">
             <button
+              id="tab-photo-scanner-btn"
+              onClick={() => {
+                setModalMode("photo_scan");
+                horologyAudio.playCrownClick();
+              }}
+              className={`flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-semibold transition-all ${
+                modalMode === "photo_scan"
+                  ? "bg-gradient-to-r from-amber-500 to-amber-400 text-neutral-950 shadow-md font-bold"
+                  : "text-neutral-400 hover:text-neutral-200"
+              }`}
+            >
+              <Camera size={14} />
+              <span>Photo Scanner & Camera</span>
+            </button>
+
+            <button
               id="tab-curated-sources-btn"
               onClick={() => {
                 setModalMode("source_catalogs");
@@ -334,7 +352,7 @@ export const AddWatchModal: React.FC<AddWatchModalProps> = ({
               }`}
             >
               <BookOpen size={14} />
-              <span>Curated Sources (6 Authorities)</span>
+              <span>Curated Sources</span>
             </button>
 
             <button
@@ -350,7 +368,7 @@ export const AddWatchModal: React.FC<AddWatchModalProps> = ({
               }`}
             >
               <Sparkles size={14} />
-              <span>Custom AI Search & Lenses</span>
+              <span>Custom AI Search</span>
             </button>
           </div>
         </div>
@@ -379,8 +397,17 @@ export const AddWatchModal: React.FC<AddWatchModalProps> = ({
 
         {/* Main Scrollable Content Area */}
         <div className="flex-1 overflow-y-auto pr-1 sm:pr-2.5 space-y-4 custom-scrollbar">
-          {modalMode === "source_catalogs" ? (
-            /* 1. CURATED SOURCE CATALOGS VIEW */
+          {modalMode === "photo_scan" ? (
+            /* 1. PHOTO SCANNER & CAMERA VISION VIEW */
+            <WatchPhotoScanner
+              selectedCollectionId={selectedColId}
+              sourceLens={sourceLens}
+              onWatchScanned={(scannedWatch) => {
+                setPreviewWatch(scannedWatch);
+              }}
+            />
+          ) : modalMode === "source_catalogs" ? (
+            /* 2. CURATED SOURCE CATALOGS VIEW */
             <div className="space-y-4">
               {/* 10 Source Pills Bar (All Sources + 9 Authorities) */}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-10 gap-2">
@@ -593,8 +620,8 @@ export const AddWatchModal: React.FC<AddWatchModalProps> = ({
                 </div>
               )}
             </div>
-          ) : (
-            /* 2. CUSTOM AI SEARCH & HOROLOGICAL LENSES VIEW */
+          ) : modalMode === "ai_search" ? (
+            /* 3. CUSTOM AI SEARCH & HOROLOGICAL LENSES VIEW */
             <div className="space-y-4">
               {/* Input Bar & Lens Selector */}
               <div className="space-y-3">
@@ -767,7 +794,7 @@ export const AddWatchModal: React.FC<AddWatchModalProps> = ({
                 </div>
               )}
             </div>
-          )}
+          ) : null}
 
           {/* Live Preview Area (When a watch is generated or selected) */}
           {previewWatch && (

@@ -13,7 +13,7 @@ export interface StyleMeta {
   description: string;
 }
 
-export const STYLE_METADATA: Record<WatchCategory, StyleMeta> = {
+export const STYLE_METADATA: Record<string, StyleMeta> = {
   Dress: {
     category: "Dress",
     label: "Dress Watch",
@@ -74,6 +74,18 @@ export const STYLE_METADATA: Record<WatchCategory, StyleMeta> = {
     keyTraits: ["24-Hour Bidirectional Bezel", "Independent 4th GMT Hand", "Split-Color Day/Night Bezel", "Local-Hour Jumping Setting"],
     description: "Born for transcontinental jet pilots and international travelers to track home and local time simultaneously across timezones.",
   },
+  "GMT/Travel": {
+    category: "GMT / Travel",
+    label: "GMT / Travel Timepiece",
+    emoji: "✈️",
+    badgeBg: "bg-blue-500/15",
+    badgeText: "text-blue-300",
+    badgeBorder: "border-blue-500/40",
+    accentGlow: "shadow-blue-500/20",
+    archetype: "Dual-Timezone Aviator & Global Instrument",
+    keyTraits: ["24-Hour Bidirectional Bezel", "Independent 4th GMT Hand", "Split-Color Day/Night Bezel", "Local-Hour Jumping Setting"],
+    description: "Born for transcontinental jet pilots and international travelers to track home and local time simultaneously across timezones.",
+  },
   "Grand Complication": {
     category: "Grand Complication",
     label: "Grand Complication",
@@ -110,6 +122,138 @@ export const STYLE_METADATA: Record<WatchCategory, StyleMeta> = {
     keyTraits: ["Oversized Onion Crown", "Flieger Type A/B Dial", "Soft-Iron Anti-Magnetic Cage", "High-Contrast Sword Hands"],
     description: "Designed for aviators needing instantaneous legibility in cockpits, gloved operation via enlarged crowns, and magnetic field resistance.",
   },
+  Skeleton: {
+    category: "Skeleton",
+    label: "Skeleton / Openworked",
+    emoji: "💀",
+    badgeBg: "bg-violet-500/15",
+    badgeText: "text-violet-300",
+    badgeBorder: "border-violet-500/40",
+    accentGlow: "shadow-violet-500/20",
+    archetype: "Architectural Micromechanics & Open Geartrains",
+    keyTraits: ["Cutaway Dial & Bridges", "Visible Balance Wheel Oscillation", "Hand Chamfered Angles", "Exhibition Sapphire Front & Back"],
+    description: "Reveals the inner beating heart of the movement by paring away non-essential bridge metal to create an intricate kinetic sculpture.",
+  },
+  Sport: {
+    category: "Sport",
+    label: "Sport / All-Terrain",
+    emoji: "🏅",
+    badgeBg: "bg-emerald-500/15",
+    badgeText: "text-emerald-300",
+    badgeBorder: "border-emerald-500/40",
+    accentGlow: "shadow-emerald-500/20",
+    archetype: "Rugged Endurance & Dynamic Ergonomics",
+    keyTraits: ["Shock-Resistant Casing", "Reinforced Gaskets & Crown Guards", "High-Legibility High-Contrast Markers", "Resilient Steel or Polymer Architecture"],
+    description: "Built for active dynamic lifestyle, heavy impacts, sports activities, and everyday resilience.",
+  },
+  "Vintage Swiss": {
+    category: "Vintage Swiss",
+    label: "Vintage Swiss Classic",
+    emoji: "🕰️",
+    badgeBg: "bg-amber-600/15",
+    badgeText: "text-amber-300",
+    badgeBorder: "border-amber-600/40",
+    accentGlow: "shadow-amber-600/20",
+    archetype: "Mid-Century Heritage & Timeless Manufacture",
+    keyTraits: ["Classic 34–38mm Proportions", "Drilled Lugs & Domed Acrylic Crystal", "Warm Patina / Aged Tritium Aesthetics", "Historic Caliber Architecture"],
+    description: "Celebrates the golden era of Swiss mechanical horology from the 1940s through 1970s with timeless charm and enduring collectibility.",
+  },
+  Occasion: {
+    category: "Occasion",
+    label: "Special Occasion & Celebration",
+    emoji: "✨",
+    badgeBg: "bg-yellow-500/15",
+    badgeText: "text-yellow-300",
+    badgeBorder: "border-yellow-500/40",
+    accentGlow: "shadow-yellow-500/20",
+    archetype: "Milestone Celebration & Statement Horology",
+    keyTraits: ["Precious Accents & Distinctive Finishing", "Refined Dial Artistry", "High Visual Presence", "Commemorative Quality"],
+    description: "Curated for weddings, gala galas, milestone anniversaries, and unforgettable celebrations that demand extraordinary refinement.",
+  },
+  Racing: {
+    category: "Racing",
+    label: "Racing / Motorsport",
+    emoji: "🏎️",
+    badgeBg: "bg-red-500/15",
+    badgeText: "text-red-400",
+    badgeBorder: "border-red-500/40",
+    accentGlow: "shadow-red-500/20",
+    archetype: "High-Octane Trackside Speed & Lap Timing",
+    keyTraits: ["Tachymeter Scale Bezel", "High-Contrast Sub-Dials", "Rally Perforated Strap", "Pusher Ergonomics"],
+    description: "Born in the paddock of Monza, Le Mans, and Daytona for precision speed measurement and high-octane motorsport timing.",
+  },
+  Microbrand: {
+    category: "Microbrand",
+    label: "Independent Microbrand",
+    emoji: "🔬",
+    badgeBg: "bg-cyan-500/15",
+    badgeText: "text-cyan-300",
+    badgeBorder: "border-cyan-500/40",
+    accentGlow: "shadow-cyan-500/20",
+    archetype: "Enthusiast-Driven Innovation & Pure Value",
+    keyTraits: ["Direct-to-Consumer Value Ratio", "Innovative Material Finishing", "Enthusiast-Designed Proportions", "Limited Batch Production"],
+    description: "Forward-thinking boutique watchmakers challenging traditional luxury houses with obsessively detailed specifications and direct enthusiast engagement.",
+  },
+  Minimalist: {
+    category: "Minimalist",
+    label: "Minimalist / Bauhaus",
+    emoji: "📐",
+    badgeBg: "bg-zinc-500/15",
+    badgeText: "text-zinc-300",
+    badgeBorder: "border-zinc-500/40",
+    accentGlow: "shadow-zinc-500/20",
+    archetype: "Form Follows Function & Pure Modernism",
+    keyTraits: ["Clean Geometric Typography", "Spacious Uncluttered Dials", "Slim Straight Wire Lugs", "Understated Neutral Finishes"],
+    description: "Rooted in the German Bauhaus and modern industrial design movements where every redundant line is eliminated in pursuit of essential clarity.",
+  },
+  "Minimalist / Bauhaus": {
+    category: "Minimalist / Bauhaus",
+    label: "Minimalist / Bauhaus",
+    emoji: "📐",
+    badgeBg: "bg-zinc-500/15",
+    badgeText: "text-zinc-300",
+    badgeBorder: "border-zinc-500/40",
+    accentGlow: "shadow-zinc-500/20",
+    archetype: "Form Follows Function & Pure Modernism",
+    keyTraits: ["Clean Geometric Typography", "Spacious Uncluttered Dials", "Slim Straight Wire Lugs", "Understated Neutral Finishes"],
+    description: "Rooted in the German Bauhaus and modern industrial design movements where every redundant line is eliminated in pursuit of essential clarity.",
+  },
+  Moonphase: {
+    category: "Moonphase",
+    label: "Moonphase / Celestial",
+    emoji: "🌙",
+    badgeBg: "bg-indigo-500/15",
+    badgeText: "text-indigo-300",
+    badgeBorder: "border-indigo-500/40",
+    accentGlow: "shadow-indigo-500/20",
+    archetype: "Celestial Tracking & Astronomical Romance",
+    keyTraits: ["29.5-Day Lunar Cycle Aperture", "Gold / Star Sprinkled Disc", "Classic Dial Balancing", "Poetic Mechanical Wonder"],
+    description: "Tracks the waxing and waning phases of the lunar cycle on the wrist, connecting wearer to celestial mechanics and ancient calendar traditions.",
+  },
+  Worldtimer: {
+    category: "Worldtimer",
+    label: "Worldtimer / Global Master",
+    emoji: "🌐",
+    badgeBg: "bg-teal-500/15",
+    badgeText: "text-teal-300",
+    badgeBorder: "border-teal-500/40",
+    accentGlow: "shadow-teal-500/20",
+    archetype: "Simultaneous 24 Global City Reference",
+    keyTraits: ["Outer 24 City Ring", "24-Hour Rotating Disc", "Quickset Push-Button City Jump", "Map / Continents Dial Art"],
+    description: "Enables instant readout of time across all 24 major global time zones simultaneously with a single glance at the dial.",
+  },
+  "Tank / Rectangular": {
+    category: "Tank / Rectangular",
+    label: "Tank & Rectangular Art Deco",
+    emoji: "🏛️",
+    badgeBg: "bg-amber-400/15",
+    badgeText: "text-amber-200",
+    badgeBorder: "border-amber-400/40",
+    accentGlow: "shadow-amber-400/20",
+    archetype: "Art Deco Geometry & Architectural Distinction",
+    keyTraits: ["Parallel Vertical Brancards", "Roman Numeral Dial / Rail Track", "Blue Steel Hands & Crown Cabochon", "Refined Geometric Wrist Presence"],
+    description: "Inspired by Louis Cartier's 1917 masterpiece and Art Deco architectural symmetry, presenting a bold non-round silhouette of pure distinction.",
+  },
   Everyday: {
     category: "Everyday",
     label: "Everyday / GADA",
@@ -123,6 +267,31 @@ export const STYLE_METADATA: Record<WatchCategory, StyleMeta> = {
     description: "A balanced timepiece equally comfortable in boardrooms, casual weekend outings, or active sports without skipping a beat.",
   },
 };
+
+export function getStyleMetadata(category: string): StyleMeta {
+  if (STYLE_METADATA[category]) {
+    return STYLE_METADATA[category];
+  }
+  // Try case-insensitive / partial match
+  const foundKey = Object.keys(STYLE_METADATA).find((k) =>
+    k.toLowerCase().includes(category.toLowerCase()) || category.toLowerCase().includes(k.toLowerCase())
+  );
+  if (foundKey && STYLE_METADATA[foundKey]) {
+    return STYLE_METADATA[foundKey];
+  }
+  return {
+    category: "Everyday",
+    label: category,
+    emoji: "⌚",
+    badgeBg: "bg-neutral-800/80",
+    badgeText: "text-neutral-200",
+    badgeBorder: "border-neutral-700/60",
+    accentGlow: "shadow-neutral-500/10",
+    archetype: "Timepiece Craftsmanship",
+    keyTraits: ["Precision Horology", "Refined Proportions", "Curated Reference"],
+    description: "A finely crafted horological creation reflecting rich watchmaking heritage and mechanical distinction.",
+  };
+}
 
 export interface MovementMeta {
   type: WatchMovement["type"];

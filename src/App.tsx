@@ -6,8 +6,14 @@ import { WatchInspectionModal } from "./components/WatchInspectionModal";
 import { AddWatchModal } from "./components/AddWatchModal";
 import { CaseSettingsModal } from "./components/CaseSettingsModal";
 import { ManageCollectionsModal } from "./components/ManageCollectionsModal";
+import { ResetVitrineModal } from "./components/ResetVitrineModal";
 import { AuthModal } from "./components/AuthModal";
 import { WatchSearchEngine } from "./components/WatchSearchEngine";
+import { WatchWinderVaultModal } from "./components/WatchWinderVaultModal";
+import { WOTDAndStrapStudioModal } from "./components/WOTDAndStrapStudioModal";
+import { GrailAndAnalyticsModal } from "./components/GrailAndAnalyticsModal";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { sanitizeWatch } from "./utils/watchUtils";
 import { auth, onAuthStateChanged, User } from "./firebase";
 import {
   loadUserDataFromFirestore,
@@ -34,6 +40,11 @@ import {
   Loader2,
   Sparkles,
   Compass,
+  RotateCw,
+  Target,
+  PieChart,
+  Camera,
+  ArrowRightLeft,
 } from "lucide-react";
 import { horologyAudio } from "./utils/audio";
 
@@ -79,10 +90,12 @@ export default function App() {
       const saved = localStorage.getItem(getStorageKey(null));
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((w: any) => sanitizeWatch(w));
+        }
       }
     } catch {}
-    return DEFAULT_WATCHES;
+    return DEFAULT_WATCHES.map((w) => sanitizeWatch(w));
   });
 
   const [caseSettings, setCaseSettings] = useState<CaseSettings>(() => {
@@ -96,10 +109,15 @@ export default function App() {
   const [selectedWatch, setSelectedWatch] = useState<Watch | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSearchEngineOpen, setIsSearchEngineOpen] = useState(false);
-  const [addModalMode, setAddModalMode] = useState<"ai_search" | "source_catalogs">("ai_search");
+  const [isWinderModalOpen, setIsWinderModalOpen] = useState(false);
+  const [isWOTDModalOpen, setIsWOTDModalOpen] = useState(false);
+  const [isGrailAnalyticsOpen, setIsGrailAnalyticsOpen] = useState(false);
+  const [addModalMode, setAddModalMode] = useState<"ai_search" | "source_catalogs" | "photo_scan">("photo_scan");
   const [addModalInitialQuery, setAddModalInitialQuery] = useState<string>("");
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isManageCollectionsOpen, setIsManageCollectionsOpen] = useState(false);
+  const [isResetVitrineOpen, setIsResetVitrineOpen] = useState(false);
+  const [resetVitrineTargetId, setResetVitrineTargetId] = useState<string | "all">("all");
 
   // Filters
   const [filterCategory, setFilterCategory] = useState<string>("All");
@@ -121,9 +139,9 @@ export default function App() {
         try {
           const cloudData = await loadUserDataFromFirestore(user.uid);
           if (cloudData.watches && cloudData.watches.length > 0) {
-            setWatches(cloudData.watches);
+            setWatches(cloudData.watches.map((w: any) => sanitizeWatch(w)));
           } else {
-            setWatches(DEFAULT_WATCHES);
+            setWatches(DEFAULT_WATCHES.map((w) => sanitizeWatch(w)));
           }
           if (cloudData.collections && cloudData.collections.length > 0) {
             setCollections(cloudData.collections);
@@ -199,12 +217,13 @@ export default function App() {
 
   // Add Watch handler
   const handleAddWatch = (newWatch: Watch) => {
-    setWatches((prev) => [newWatch, ...prev]);
-    setSelectedWatch(newWatch);
+    const cleanWatch = sanitizeWatch(newWatch);
+    setWatches((prev) => [cleanWatch, ...prev]);
+    setSelectedWatch(cleanWatch);
 
     if (currentUser) {
       setSyncStatus("saving");
-      saveWatchToFirestore(currentUser.uid, newWatch)
+      saveWatchToFirestore(currentUser.uid, cleanWatch)
         .then(() => setSyncStatus("synced"))
         .catch(() => setSyncStatus("local"));
     }
@@ -212,12 +231,13 @@ export default function App() {
 
   // Update single watch (e.g. notes, strap, engraving, collection)
   const handleUpdateWatch = (updatedWatch: Watch) => {
-    setWatches((prev) => prev.map((w) => (w.id === updatedWatch.id ? updatedWatch : w)));
-    setSelectedWatch(updatedWatch);
+    const cleanWatch = sanitizeWatch(updatedWatch);
+    setWatches((prev) => prev.map((w) => (w.id === cleanWatch.id ? cleanWatch : w)));
+    setSelectedWatch(cleanWatch);
 
     if (currentUser) {
       setSyncStatus("saving");
-      saveWatchToFirestore(currentUser.uid, updatedWatch)
+      saveWatchToFirestore(currentUser.uid, cleanWatch)
         .then(() => setSyncStatus("synced"))
         .catch(() => setSyncStatus("local"));
     }
@@ -268,12 +288,22 @@ export default function App() {
     }
   };
 
-  // Move watch between collections
+  // Move watch between collections with toast notification
+  const [moveToast, setMoveToast] = useState<{
+    message: string;
+    watchId: string;
+    prevCollectionId?: string;
+    targetCollectionId: string;
+  } | null>(null);
+
   const handleMoveWatchCollection = (watchId: string, targetCollectionId: string) => {
     let updatedWatch: Watch | null = null;
+    let prevColId: string | undefined = undefined;
+
     setWatches((prev) =>
       prev.map((w) => {
         if (w.id === watchId) {
+          prevColId = w.collectionId;
           updatedWatch = { ...w, collectionId: targetCollectionId };
           return updatedWatch;
         }
@@ -288,6 +318,101 @@ export default function App() {
     if (currentUser && updatedWatch) {
       saveWatchToFirestore(currentUser.uid, updatedWatch);
     }
+
+    const targetColName = collections.find((c) => c.id === targetCollectionId)?.name || "New Vitrine";
+    const watchObj = watches.find((w) => w.id === watchId);
+    const watchLabel = watchObj ? `${watchObj.brand} ${watchObj.name}` : "Timepiece";
+
+    setMoveToast({
+      message: `Moved "${watchLabel}" to "${targetColName}"`,
+      watchId,
+      prevCollectionId: prevColId,
+      targetCollectionId,
+    });
+    setTimeout(() => {
+      setMoveToast((current) => (current?.watchId === watchId ? null : current));
+    }, 4500);
+
+    horologyAudio.playCrownClick();
+  };
+
+  // Undo moving watch
+  const handleUndoMove = () => {
+    if (!moveToast || !moveToast.prevCollectionId) return;
+    const { watchId, prevCollectionId } = moveToast;
+    setWatches((prev) =>
+      prev.map((w) => {
+        if (w.id === watchId) {
+          const restored = { ...w, collectionId: prevCollectionId };
+          if (currentUser) saveWatchToFirestore(currentUser.uid, restored);
+          return restored;
+        }
+        return w;
+      })
+    );
+    if (selectedWatch && selectedWatch.id === watchId) {
+      setSelectedWatch((prev) => (prev ? { ...prev, collectionId: prevCollectionId } : null));
+    }
+    setMoveToast(null);
+    horologyAudio.playCrownClick();
+  };
+
+  // Batch move multiple watches to a vitrine
+  const handleBatchMoveWatchCollection = (watchIds: string[], targetCollectionId: string) => {
+    if (watchIds.length === 0) return;
+
+    setWatches((prev) =>
+      prev.map((w) => {
+        if (watchIds.includes(w.id)) {
+          const updated = { ...w, collectionId: targetCollectionId };
+          if (currentUser) saveWatchToFirestore(currentUser.uid, updated);
+          return updated;
+        }
+        return w;
+      })
+    );
+
+    if (selectedWatch && watchIds.includes(selectedWatch.id)) {
+      setSelectedWatch((prev) => (prev ? { ...prev, collectionId: targetCollectionId } : null));
+    }
+
+    const targetColName = collections.find((c) => c.id === targetCollectionId)?.name || "Target Vitrine";
+    setMoveToast({
+      message: `Successfully moved ${watchIds.length} timepieces to "${targetColName}"`,
+      watchId: watchIds[0],
+      targetCollectionId,
+    });
+    setTimeout(() => setMoveToast(null), 4500);
+
+    horologyAudio.playCaseLid();
+  };
+
+  // Transfer all watches from one vitrine to another
+  const handleTransferAllWatches = (fromCollectionId: string, toCollectionId: string) => {
+    const affectedWatchIds: string[] = [];
+    setWatches((prev) =>
+      prev.map((w) => {
+        if (w.collectionId === fromCollectionId) {
+          affectedWatchIds.push(w.id);
+          const updated = { ...w, collectionId: toCollectionId };
+          if (currentUser) saveWatchToFirestore(currentUser.uid, updated);
+          return updated;
+        }
+        return w;
+      })
+    );
+
+    const fromColName = collections.find((c) => c.id === fromCollectionId)?.name || "Vitrine";
+    const toColName = collections.find((c) => c.id === toCollectionId)?.name || "Vitrine";
+
+    setMoveToast({
+      message: `Transferred all ${affectedWatchIds.length} timepieces from "${fromColName}" to "${toColName}"`,
+      watchId: affectedWatchIds[0] || "",
+      targetCollectionId: toCollectionId,
+    });
+    setTimeout(() => setMoveToast(null), 4500);
+
+    horologyAudio.playCaseLid();
   };
 
   // Collection CRUD handlers
@@ -364,16 +489,79 @@ export default function App() {
     }
   };
 
+  // Open Reset Vitrine modal for specific or all vitrines
+  const handleOpenResetVitrine = (colId: string | "all") => {
+    setResetVitrineTargetId(colId);
+    setIsResetVitrineOpen(true);
+  };
+
+  // Reset an individual vitrine or all vitrines (Empty clean slate vs Factory Curated Defaults)
+  const handleResetIndividualVitrine = (collectionId: string | "all", mode: "empty" | "defaults") => {
+    let nextWatches: Watch[] = [];
+    let nextCollections: WatchCollection[] = collections;
+
+    if (collectionId === "all") {
+      if (mode === "empty") {
+        nextWatches = [];
+        setWatches([]);
+        setSelectedWatch(null);
+      } else {
+        nextWatches = DEFAULT_WATCHES;
+        nextCollections = DEFAULT_COLLECTIONS;
+        setWatches(DEFAULT_WATCHES);
+        setCollections(DEFAULT_COLLECTIONS);
+        setSelectedWatch(null);
+      }
+    } else {
+      // Specific collection
+      const otherWatches = watches.filter((w) => w.collectionId !== collectionId);
+
+      if (mode === "empty") {
+        nextWatches = otherWatches;
+        setWatches(nextWatches);
+        if (selectedWatch && selectedWatch.collectionId === collectionId) {
+          setSelectedWatch(null);
+        }
+      } else {
+        // Mode === "defaults"
+        // Find default watches tagged with this collection ID
+        let curatedForCol = DEFAULT_WATCHES.filter((w) => w.collectionId === collectionId);
+
+        // If this is a custom collection created by user, provide a curated 3-watch starter selection mapped to this ID
+        if (curatedForCol.length === 0) {
+          curatedForCol = DEFAULT_WATCHES.slice(0, 3).map((w, idx) => ({
+            ...w,
+            id: `starter-${collectionId}-${idx}-${Date.now()}`,
+            collectionId: collectionId,
+          }));
+        }
+
+        nextWatches = [...otherWatches, ...curatedForCol];
+        setWatches(nextWatches);
+        if (selectedWatch && selectedWatch.collectionId === collectionId) {
+          setSelectedWatch(null);
+        }
+
+        // Restore default collection aesthetic if it was a default collection
+        const defaultColInfo = DEFAULT_COLLECTIONS.find((c) => c.id === collectionId);
+        if (defaultColInfo) {
+          nextCollections = collections.map((c) =>
+            c.id === collectionId ? { ...defaultColInfo, id: collectionId } : c
+          );
+          setCollections(nextCollections);
+        }
+      }
+    }
+
+    // Persist to Cloud Firestore if logged in
+    if (currentUser) {
+      syncLocalWorkspaceToCloud(currentUser.uid, nextWatches, nextCollections, caseSettings);
+    }
+  };
+
   // Reset to default curated collection
   const handleResetCollection = () => {
-    setWatches(DEFAULT_WATCHES);
-    setCollections(DEFAULT_COLLECTIONS);
-    setActiveCollectionId("all");
-    setSelectedWatch(null);
-
-    if (currentUser) {
-      syncLocalWorkspaceToCloud(currentUser.uid, DEFAULT_WATCHES, DEFAULT_COLLECTIONS, DEFAULT_SETTINGS);
-    }
+    handleResetIndividualVitrine("all", "defaults");
   };
 
   // Export JSON (Both watches and collections)
@@ -565,6 +753,63 @@ export default function App() {
               <span className="md:hidden">Search Engine</span>
             </button>
 
+            {/* Watch Winder Vault */}
+            <button
+              id="header-winder-vault-btn"
+              onClick={() => {
+                setIsWinderModalOpen(true);
+                horologyAudio.playCrownClick();
+              }}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-amber-300 border border-neutral-800 hover:border-amber-500/40 text-xs font-medium transition-all active:scale-95"
+              title="Simulated Gyroscopic Watch Winder Vault"
+            >
+              <RotateCw size={14} className="text-amber-400" />
+              <span>Winder Vault</span>
+            </button>
+
+            {/* WOTD & Strap Studio */}
+            <button
+              id="header-wotd-straps-btn"
+              onClick={() => {
+                setIsWOTDModalOpen(true);
+                horologyAudio.playCrownClick();
+              }}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-amber-300 border border-neutral-800 hover:border-amber-500/40 text-xs font-medium transition-all active:scale-95"
+              title="Watch of the Day Advisor & Strap Monster Studio"
+            >
+              <Target size={14} className="text-rose-400" />
+              <span>WOTD & Straps</span>
+            </button>
+
+            {/* Grail & Vitrine Analytics */}
+            <button
+              id="header-grail-analytics-btn"
+              onClick={() => {
+                setIsGrailAnalyticsOpen(true);
+                horologyAudio.playCrownClick();
+              }}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-amber-300 border border-neutral-800 hover:border-amber-500/40 text-xs font-medium transition-all active:scale-95"
+              title="Grail Wishlist & Collection Vitrine Analytics"
+            >
+              <PieChart size={14} className="text-emerald-400" />
+              <span>Grails & Stats</span>
+            </button>
+
+            {/* Photo Scanner Direct Launcher */}
+            <button
+              id="header-photo-scanner-btn"
+              onClick={() => {
+                setAddModalMode("photo_scan");
+                setIsAddModalOpen(true);
+                horologyAudio.playCrownClick();
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-amber-400/10 to-amber-600/20 hover:from-amber-500/30 hover:to-amber-600/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all shadow-sm shadow-amber-500/10 active:scale-95"
+              title="Scan Watch Photo with Camera or Upload"
+            >
+              <Camera size={14} className="text-amber-400" />
+              <span className="hidden sm:inline">Scan Photo</span>
+            </button>
+
             {/* AI Search Lens Direct Launcher */}
             <button
               id="header-ai-search-lens-btn"
@@ -574,7 +819,7 @@ export default function App() {
                 setIsAddModalOpen(true);
                 horologyAudio.playCrownClick();
               }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-amber-400/10 to-amber-600/20 hover:from-amber-500/30 hover:to-amber-600/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all shadow-sm shadow-amber-500/10 active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-amber-300 border border-neutral-800 hover:border-amber-500/40 text-xs font-medium transition-all active:scale-95"
               title="Open AI Watch Recognition & Provenance Search Lens"
             >
               <Sparkles size={14} className="text-amber-400" />
@@ -585,14 +830,14 @@ export default function App() {
             <button
               id="nav-add-watch-btn"
               onClick={() => {
-                setAddModalMode("ai_search");
+                setAddModalMode("photo_scan");
                 setIsAddModalOpen(true);
                 horologyAudio.playCaseLid();
               }}
               className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-neutral-950 font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-amber-500/20 active:scale-95"
             >
               <Plus size={15} />
-              <span className="hidden xs:inline">Input Watch</span>
+              <span className="hidden xs:inline">Add Watch</span>
               <span className="xs:hidden">Add</span>
             </button>
           </div>
@@ -620,6 +865,7 @@ export default function App() {
           activeCollectionId={activeCollectionId}
           onSelectCollection={(id) => setActiveCollectionId(id)}
           onOpenManageCollections={() => setIsManageCollectionsOpen(true)}
+          onOpenResetVitrine={handleOpenResetVitrine}
           selectedWatch={selectedWatch}
           onSelectWatch={(watch) => setSelectedWatch(watch)}
           onAddNewWatch={() => {
@@ -629,6 +875,7 @@ export default function App() {
           onToggleFavorite={handleToggleFavorite}
           onDeleteWatch={handleDeleteWatch}
           onMoveWatchCollection={handleMoveWatchCollection}
+          onBatchMoveWatchCollection={handleBatchMoveWatchCollection}
           caseSettings={caseSettings}
           onUpdateCaseSettings={handleUpdateCaseSettings}
           filterCategory={filterCategory}
@@ -639,6 +886,49 @@ export default function App() {
           onSearchChange={(q) => setSearchQuery(q)}
         />
       </main>
+
+      {/* Moved Watch Toast Snackbar with Instant Undo & Jump-to-Vitrine */}
+      {moveToast && (
+        <div
+          id="move-watch-toast"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 sm:translate-x-0 sm:left-auto sm:right-6 z-50 bg-neutral-950/95 border border-amber-500/70 p-4 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md animate-slide-up text-xs max-w-md"
+        >
+          <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+            <ArrowRightLeft size={15} />
+          </div>
+          <div className="flex flex-col flex-1 min-w-0">
+            <span className="font-bold text-neutral-100 truncate">{moveToast.message}</span>
+            <span className="text-[11px] text-amber-400/90 font-mono">
+              Vitrine assignment updated
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {moveToast.targetCollectionId && (
+              <button
+                id="view-moved-vitrine-btn"
+                onClick={() => {
+                  setActiveCollectionId(moveToast.targetCollectionId);
+                  setMoveToast(null);
+                  horologyAudio.playCrownClick();
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-[11px] font-semibold transition-colors"
+              >
+                View Vitrine
+              </button>
+            )}
+            {moveToast.prevCollectionId && (
+              <button
+                id="undo-move-btn"
+                onClick={handleUndoMove}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500 text-neutral-950 font-bold hover:bg-amber-400 text-[11px] transition-colors"
+              >
+                <Undo2 size={12} />
+                <span>Undo</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Undo Delete Toast Snackbar */}
       {undoToastVisible && recentlyDeletedWatch && (
@@ -722,11 +1012,18 @@ export default function App() {
       {isManageCollectionsOpen && (
         <ManageCollectionsModal
           collections={collections}
+          watches={watches}
           activeCollectionId={activeCollectionId}
           onSelectCollection={(id) => setActiveCollectionId(id)}
           onCreateCollection={handleCreateCollection}
           onUpdateCollection={handleUpdateCollection}
           onDeleteCollection={handleDeleteCollection}
+          onMoveWatchCollection={handleMoveWatchCollection}
+          onTransferAllWatches={handleTransferAllWatches}
+          onOpenResetVitrine={(colId) => {
+            setIsManageCollectionsOpen(false);
+            handleOpenResetVitrine(colId);
+          }}
           onClose={() => setIsManageCollectionsOpen(false)}
           watchCountByCollection={
             collections.reduce((acc, col) => {
@@ -734,6 +1031,17 @@ export default function App() {
               return acc;
             }, {} as Record<string, number>)
           }
+        />
+      )}
+
+      {/* 4b. Reset Vitrine Modal */}
+      {isResetVitrineOpen && (
+        <ResetVitrineModal
+          collections={collections}
+          targetCollectionId={resetVitrineTargetId}
+          watches={watches}
+          onClose={() => setIsResetVitrineOpen(false)}
+          onResetVitrine={handleResetIndividualVitrine}
         />
       )}
 
@@ -769,6 +1077,49 @@ export default function App() {
           }}
           collections={collections}
           activeCollectionId={activeCollectionId !== "all" ? activeCollectionId : collections[0]?.id || "default"}
+        />
+      )}
+
+      {/* 7. Gyroscopic Watch Winder Vault Modal */}
+      {isWinderModalOpen && (
+        <WatchWinderVaultModal
+          watches={watches}
+          onClose={() => setIsWinderModalOpen(false)}
+          onSelectWatch={(watch) => {
+            setSelectedWatch(watch);
+            setIsWinderModalOpen(false);
+          }}
+        />
+      )}
+
+      {/* 8. Watch of the Day & Strap Monster Studio Modal */}
+      {isWOTDModalOpen && (
+        <WOTDAndStrapStudioModal
+          watches={watches}
+          onClose={() => setIsWOTDModalOpen(false)}
+          onSelectWatch={(watch) => {
+            setSelectedWatch(watch);
+            setIsWOTDModalOpen(false);
+          }}
+          onUpdateWatch={handleUpdateWatch}
+        />
+      )}
+
+      {/* 9. Grail Wishlist & Vitrine Analytics Modal */}
+      {isGrailAnalyticsOpen && (
+        <GrailAndAnalyticsModal
+          watches={watches}
+          collections={collections}
+          onClose={() => setIsGrailAnalyticsOpen(false)}
+          onAddGrailToCollection={(grailWatch) => {
+            const newWatch: Watch = {
+              ...grailWatch,
+              id: `watch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              collectionId: activeCollectionId !== "all" ? activeCollectionId : collections[0]?.id || "default",
+              dateAdded: new Date().toISOString(),
+            };
+            handleAddWatch(newWatch);
+          }}
         />
       )}
     </div>

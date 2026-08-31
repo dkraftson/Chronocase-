@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Watch, WatchCollection, CaseSettings, WatchCategory, WatchMovement } from "../types";
 import { WatchRenderer } from "./WatchRenderer";
 import { MovementExhibition } from "./MovementExhibition";
+import { ErrorBoundary } from "./ErrorBoundary";
 import {
   Plus,
   Star,
@@ -24,7 +25,9 @@ import {
   ArrowRightLeft,
   Check,
   RotateCw,
+  RotateCcw,
   BookOpen,
+  RefreshCw,
 } from "lucide-react";
 import { horologyAudio } from "../utils/audio";
 import { STYLE_METADATA, MOVEMENT_METADATA } from "../utils/styleAndMovement";
@@ -36,12 +39,14 @@ interface WatchCaseProps {
   activeCollectionId: string | "all";
   onSelectCollection: (colId: string | "all") => void;
   onOpenManageCollections: () => void;
+  onOpenResetVitrine: (colId: string | "all") => void;
   selectedWatch: Watch | null;
   onSelectWatch: (watch: Watch) => void;
   onAddNewWatch: () => void;
   onToggleFavorite: (id: string) => void;
   onDeleteWatch: (id: string) => void;
   onMoveWatchCollection: (watchId: string, targetCollectionId: string) => void;
+  onBatchMoveWatchCollection?: (watchIds: string[], targetCollectionId: string) => void;
   caseSettings: CaseSettings;
   onUpdateCaseSettings: (settings: Partial<CaseSettings>) => void;
   filterCategory: string;
@@ -58,12 +63,14 @@ export const WatchCase: React.FC<WatchCaseProps> = ({
   activeCollectionId,
   onSelectCollection,
   onOpenManageCollections,
+  onOpenResetVitrine,
   selectedWatch,
   onSelectWatch,
   onAddNewWatch,
   onToggleFavorite,
   onDeleteWatch,
   onMoveWatchCollection,
+  onBatchMoveWatchCollection,
   caseSettings,
   onUpdateCaseSettings,
   filterCategory,
@@ -77,6 +84,15 @@ export const WatchCase: React.FC<WatchCaseProps> = ({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [movingWatchId, setMovingWatchId] = useState<string | null>(null);
   const [flippedCards, setFlippedCards] = useState<Record<string, boolean>>({});
+
+  // Drag-and-Drop state for moving watches to vitrines
+  const [draggedWatchId, setDraggedWatchId] = useState<string | null>(null);
+  const [dragOverCollectionId, setDragOverCollectionId] = useState<string | null>(null);
+
+  // Multi-Select Batch Move state
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState<boolean>(false);
+  const [selectedBatchWatchIds, setSelectedBatchWatchIds] = useState<string[]>([]);
+  const [batchTargetVitrineId, setBatchTargetVitrineId] = useState<string>("");
 
   const isLumeLighting =
     caseSettings.lighting === "lume_laboratory" || caseSettings.lighting === "midnight_vault";
@@ -138,15 +154,16 @@ export const WatchCase: React.FC<WatchCaseProps> = ({
     const matchesMovement =
       filterMovement === "All" || w.movement.type === filterMovement;
 
-    // Search query match
-    const matchesSearch =
-      !searchQuery.trim() ||
-      w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.reference.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.movement.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.movement.caliber.toLowerCase().includes(searchQuery.toLowerCase());
+    // Search query match with multi-token space support
+    let matchesSearch = true;
+    if (searchQuery.trim()) {
+      const qClean = searchQuery.toLowerCase().trim().replace(/[^a-z0-9\s]/g, " ");
+      const tokens = qClean.split(/\s+/).filter(Boolean);
+      const searchable = `${w.brand} ${w.name} ${w.reference} ${w.category} ${w.movement?.type || ""} ${w.movement?.caliber || ""}`
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ");
+      matchesSearch = tokens.every((token) => searchable.includes(token));
+    }
 
     return matchesCollection && matchesCategory && matchesMovement && matchesSearch;
   });
@@ -203,8 +220,19 @@ export const WatchCase: React.FC<WatchCaseProps> = ({
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 py-6 flex flex-col gap-6">
-      {/* 1. COLLECTIONS NAVIGATION BAR (Vitrine Switcher) */}
-      <div className="bg-neutral-950/70 p-3 sm:p-4 rounded-2xl border border-neutral-800/80 shadow-lg backdrop-blur-md">
+      {/* 1. COLLECTIONS NAVIGATION BAR (Vitrine Switcher & Drag-Drop Destination) */}
+      <div className="bg-neutral-950/70 p-3 sm:p-4 rounded-2xl border border-neutral-800/80 shadow-lg backdrop-blur-md relative">
+        {/* Drag Hint Banner */}
+        {draggedWatchId && (
+          <div className="mb-3 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-semibold flex items-center justify-between animate-pulse">
+            <span className="flex items-center gap-2">
+              <ArrowRightLeft size={14} className="text-amber-400" />
+              <span>Drop onto any Vitrine tab below to instantly relocate timepiece</span>
+            </span>
+            <span className="text-[10px] font-mono text-amber-400/80 uppercase">Drag & Drop Active</span>
+          </div>
+        )}
+
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Collection Tab Selector */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-thin">
@@ -234,9 +262,10 @@ export const WatchCase: React.FC<WatchCaseProps> = ({
               </span>
             </button>
 
-            {/* Individual Collection Tabs */}
+            {/* Individual Collection Tabs (Also HTML5 Drop Targets) */}
             {collections.map((col) => {
               const isActive = activeCollectionId === col.id;
+              const isDragOver = dragOverCollectionId === col.id;
               const count = watchCountByCollection[col.id] || 0;
 
               return (
@@ -247,35 +276,82 @@ export const WatchCase: React.FC<WatchCaseProps> = ({
                     onSelectCollection(col.id);
                     horologyAudio.playCrownClick();
                   }}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                    isActive
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    if (dragOverCollectionId !== col.id) {
+                      setDragOverCollectionId(col.id);
+                    }
+                  }}
+                  onDragLeave={(e) => {
+                    // Only clear if actually leaving this element
+                    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                    setDragOverCollectionId(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const wId = e.dataTransfer.getData("text/plain") || draggedWatchId;
+                    if (wId) {
+                      onMoveWatchCollection(wId, col.id);
+                    }
+                    setDraggedWatchId(null);
+                    setDragOverCollectionId(null);
+                  }}
+                  className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                    isDragOver
+                      ? "bg-amber-400 text-neutral-950 ring-4 ring-amber-400/50 scale-105 shadow-xl font-bold animate-pulse"
+                      : isActive
                       ? "bg-amber-500 text-neutral-950 shadow-md shadow-amber-500/20 font-bold"
                       : "bg-neutral-900/80 text-neutral-300 hover:bg-neutral-800 hover:text-white border border-neutral-800"
                   }`}
+                  title={isDragOver ? `Drop to move watch into "${col.name}"` : `Switch view to ${col.name} or drag watches here`}
                 >
                   {getCollectionIcon(col.icon)}
                   <span>{col.name}</span>
-                  <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-                      isActive
-                        ? "bg-neutral-950/20 text-neutral-950"
-                        : "bg-neutral-800 text-neutral-400"
-                    }`}
-                  >
-                    {count}
-                  </span>
+                  {isDragOver ? (
+                    <span className="text-[10px] bg-neutral-950 text-amber-300 px-1.5 py-0.5 rounded-full font-bold">
+                      + Drop Here
+                    </span>
+                  ) : (
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                        isActive
+                          ? "bg-neutral-950/20 text-neutral-950"
+                          : "bg-neutral-800 text-neutral-400"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
 
-          {/* Manage / Add Collection Buttons */}
+          {/* Manage / Add Collection Buttons & Vitrine Reset Button */}
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              id="reset-vitrine-nav-btn"
+              onClick={() => {
+                onOpenResetVitrine(activeCollectionId);
+                horologyAudio.playCrownClick();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-amber-300 border border-neutral-800 hover:border-amber-500/40 text-xs font-medium transition-all"
+              title={
+                activeCollectionId === "all"
+                  ? "Reset All Vitrines (Start fresh or restore defaults)"
+                  : `Reset "${currentCollection?.name || "Vitrine"}" to start fresh or restore defaults`
+              }
+            >
+              <RotateCcw size={13} className="text-amber-400" />
+              <span>{activeCollectionId === "all" ? "Reset All" : "Reset Vitrine"}</span>
+            </button>
+
             <button
               id="manage-collections-btn"
               onClick={onOpenManageCollections}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-700/80 text-xs font-medium transition-colors"
-              title="Organize Collections & Vitrines"
+              title="Organize Collections, Move & Transfer Timepieces"
             >
               <FolderPlus size={14} className="text-amber-400" />
               <span>Manage Collections</span>
@@ -285,11 +361,23 @@ export const WatchCase: React.FC<WatchCaseProps> = ({
 
         {/* Current Active Collection Subtitle */}
         {currentCollection && (
-          <div className="mt-2.5 pt-2.5 border-t border-neutral-800/60 flex items-center justify-between text-xs">
+          <div className="mt-2.5 pt-2.5 border-t border-neutral-800/60 flex items-center justify-between text-xs gap-3">
             <p className="text-neutral-400 italic flex items-center gap-1.5 truncate">
               <span className="text-amber-400 font-medium font-sans">Active Vitrine:</span>
               <span>{currentCollection.description || currentCollection.name}</span>
             </p>
+            <button
+              id="reset-active-vitrine-sub-btn"
+              onClick={() => {
+                onOpenResetVitrine(currentCollection.id);
+                horologyAudio.playCrownClick();
+              }}
+              className="text-[11px] text-neutral-400 hover:text-amber-400 font-medium flex items-center gap-1 shrink-0 transition-colors"
+              title="Start fresh or restore defaults for this vitrine"
+            >
+              <RotateCcw size={11} className="text-amber-400" />
+              <span>Reset & Start Fresh</span>
+            </button>
           </div>
         )}
       </div>
@@ -411,29 +499,150 @@ export const WatchCase: React.FC<WatchCaseProps> = ({
         />
 
         {/* Vitrine Plaque Header */}
-        <div className="flex items-center justify-between mb-8 px-2 relative z-10">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8 px-2 relative z-10">
           <div className="flex items-center gap-3">
             <div className="w-2.5 h-2.5 rounded-full bg-amber-500/80 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
             <div>
-              <h2 className="text-lg font-serif tracking-wider text-amber-100/90 font-semibold uppercase">
-                {currentCollection ? currentCollection.name : "Master Horological Vitrine"}
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-serif tracking-wider text-amber-100/90 font-semibold uppercase">
+                  {currentCollection ? currentCollection.name : "Master Horological Vitrine"}
+                </h2>
+                {isMultiSelectMode && (
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-500 text-neutral-950 shadow-sm animate-pulse">
+                    Relocation Mode Active
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-neutral-400">
                 {filteredWatches.length} {filteredWatches.length === 1 ? "Timepiece" : "Timepieces"} Displayed
                 {currentCollection && ` • Collection Box`}
+                <span className="hidden md:inline ml-2 text-neutral-500">
+                  (Drag any watch to a Vitrine tab above to move)
+                </span>
               </p>
             </div>
           </div>
 
-          <button
-            id="add-watch-case-header-btn"
-            onClick={onAddNewWatch}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 text-neutral-950 font-bold text-xs tracking-wider uppercase hover:from-amber-500 hover:to-amber-400 transition-all shadow-lg shadow-amber-500/20 active:scale-95"
-          >
-            <Plus size={15} />
-            <span>Add Watch</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Multi-Select / Batch Move Mode Toggle */}
+            {filteredWatches.length > 0 && (
+              <button
+                id="toggle-multi-move-mode-btn"
+                onClick={() => {
+                  setIsMultiSelectMode((prev) => !prev);
+                  setSelectedBatchWatchIds([]);
+                  horologyAudio.playCrownClick();
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all border ${
+                  isMultiSelectMode
+                    ? "bg-amber-500 text-neutral-950 border-amber-400 font-bold shadow-md shadow-amber-500/20"
+                    : "bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border-neutral-700/60"
+                }`}
+                title="Select multiple watches to move to another vitrine at once"
+              >
+                <ArrowRightLeft size={13} />
+                <span>{isMultiSelectMode ? "Exit Multi-Move" : "Multi-Move"}</span>
+              </button>
+            )}
+
+            <button
+              id="reset-vitrine-header-btn"
+              onClick={() => {
+                onOpenResetVitrine(activeCollectionId);
+                horologyAudio.playCrownClick();
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-amber-300 border border-neutral-700/60 hover:border-amber-500/40 text-xs font-semibold tracking-wide transition-all shadow-md active:scale-95"
+              title={
+                activeCollectionId === "all"
+                  ? "Reset All Vitrines to start fresh or restore defaults"
+                  : `Reset "${currentCollection?.name || "Vitrine"}" to start fresh or restore defaults`
+              }
+            >
+              <RotateCcw size={13} className="text-amber-400" />
+              <span>Reset & Start Fresh</span>
+            </button>
+
+            <button
+              id="add-watch-case-header-btn"
+              onClick={onAddNewWatch}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 text-neutral-950 font-bold text-xs tracking-wider uppercase hover:from-amber-500 hover:to-amber-400 transition-all shadow-lg shadow-amber-500/20 active:scale-95"
+            >
+              <Plus size={15} />
+              <span>Add Watch</span>
+            </button>
+          </div>
         </div>
+
+        {/* Multi-Select Batch Action Floating Toolbar Dock */}
+        {isMultiSelectMode && (
+          <div className="mb-6 p-3 sm:p-4 rounded-2xl bg-neutral-950 border-2 border-amber-500/60 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-3 relative z-20 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                <Check size={14} className="text-amber-400" />
+                <span>{selectedBatchWatchIds.length} Selected</span>
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  id="batch-select-all-btn"
+                  onClick={() => {
+                    setSelectedBatchWatchIds(filteredWatches.map((w) => w.id));
+                    horologyAudio.playCrownClick();
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-[11px] font-medium border border-neutral-800 transition-colors"
+                >
+                  Select All
+                </button>
+                <button
+                  id="batch-deselect-all-btn"
+                  onClick={() => {
+                    setSelectedBatchWatchIds([]);
+                    horologyAudio.playCrownClick();
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 text-[11px] font-medium border border-neutral-800 transition-colors"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {/* Batch Destination Selector & Move Button */}
+            <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+              <span className="text-xs text-neutral-400 whitespace-nowrap">Move to Vitrine:</span>
+              <select
+                id="batch-target-vitrine-select"
+                value={batchTargetVitrineId}
+                onChange={(e) => setBatchTargetVitrineId(e.target.value)}
+                className="px-3 py-1.5 rounded-xl bg-neutral-900 border border-neutral-700 text-xs text-neutral-100 focus:outline-none focus:border-amber-500"
+              >
+                <option value="">Choose Target Vitrine...</option>
+                {collections.map((col) => (
+                  <option key={col.id} value={col.id}>
+                    {col.name} ({watchCountByCollection[col.id] || 0} pieces)
+                  </option>
+                ))}
+              </select>
+
+              <button
+                id="execute-batch-move-btn"
+                disabled={selectedBatchWatchIds.length === 0 || !batchTargetVitrineId}
+                onClick={() => {
+                  if (batchTargetVitrineId && selectedBatchWatchIds.length > 0) {
+                    if (onBatchMoveWatchCollection) {
+                      onBatchMoveWatchCollection(selectedBatchWatchIds, batchTargetVitrineId);
+                    } else {
+                      selectedBatchWatchIds.forEach((id) => onMoveWatchCollection(id, batchTargetVitrineId));
+                    }
+                    setSelectedBatchWatchIds([]);
+                    setIsMultiSelectMode(false);
+                  }
+                }}
+                className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-neutral-950 font-bold text-xs uppercase tracking-wider transition-all disabled:opacity-40 shadow-md shadow-amber-500/20 active:scale-95"
+              >
+                Move Selected ({selectedBatchWatchIds.length})
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Watch Grid Slots */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 relative z-10">
@@ -442,45 +651,91 @@ export const WatchCase: React.FC<WatchCaseProps> = ({
             const isSelected = selectedWatch?.id === watch.id;
             const isConfirmingDelete = confirmDeleteId === watch.id;
             const isMoving = movingWatchId === watch.id;
+            const isBatchSelected = selectedBatchWatchIds.includes(watch.id);
+
+            // Get collection of this watch
+            const watchCol = collections.find((c) => c.id === watch.collectionId);
 
             // Get style and movement metadata
-            const styleMeta = STYLE_METADATA[watch.category] || STYLE_METADATA.Everyday;
-            const movementMeta = MOVEMENT_METADATA[watch.movement.type] || MOVEMENT_METADATA.Automatic;
+            const styleMeta = STYLE_METADATA[watch?.category || "Everyday"] || STYLE_METADATA.Everyday;
+            const movementType = watch?.movement?.type || "Automatic";
+            const movementMeta = MOVEMENT_METADATA[movementType] || MOVEMENT_METADATA.Automatic;
 
             return (
-              <div
-                key={watch.id}
-                id={`watch-card-${watch.id}`}
+              <ErrorBoundary key={watch.id} isCard>
+                <div
+                  id={`watch-card-${watch.id}`}
+                  draggable={!isMultiSelectMode}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/plain", watch.id);
+                  setDraggedWatchId(watch.id);
+                  horologyAudio.playCrownClick();
+                }}
+                onDragEnd={() => {
+                  setDraggedWatchId(null);
+                  setDragOverCollectionId(null);
+                }}
                 onMouseEnter={() => setHoveredWatchId(watch.id)}
                 onMouseLeave={() => {
                   setHoveredWatchId(null);
                   if (!isConfirmingDelete) setMovingWatchId(null);
                 }}
                 onClick={() => {
-                  horologyAudio.playCrownClick();
-                  onSelectWatch(watch);
+                  if (isMultiSelectMode) {
+                    setSelectedBatchWatchIds((prev) =>
+                      prev.includes(watch.id) ? prev.filter((id) => id !== watch.id) : [...prev, watch.id]
+                    );
+                    horologyAudio.playCrownClick();
+                  } else {
+                    horologyAudio.playCrownClick();
+                    onSelectWatch(watch);
+                  }
                 }}
                 className={`group relative rounded-2xl p-4 transition-all duration-300 cursor-pointer border ${getCushionClass()} ${
-                  isSelected
+                  isBatchSelected
+                    ? "ring-2 ring-amber-400 bg-amber-500/10 shadow-2xl scale-[1.01]"
+                    : isSelected
                     ? "ring-2 ring-amber-500/80 shadow-2xl shadow-amber-500/20 scale-[1.02]"
                     : "hover:border-amber-500/40 hover:shadow-xl hover:shadow-black/50 hover:-translate-y-1"
-                }`}
+                } ${draggedWatchId === watch.id ? "opacity-40 border-dashed border-amber-400" : ""}`}
               >
                 {/* Velvet Pillow Recess Shadow */}
                 <div className="absolute inset-2 rounded-xl pointer-events-none shadow-[inset_0_4px_12px_rgba(0,0,0,0.6)] border border-white/5" />
 
                 {/* TOP BADGE BAR: STYLE & QUICK ACTIONS */}
                 <div className="relative z-20 flex items-center justify-between gap-2 mb-2">
-                  {/* Prominent Style Badge (Dress, Diver, Chronograph, etc.) */}
-                  <div
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide border shadow-sm ${styleMeta.badgeBg} ${styleMeta.badgeText} ${styleMeta.badgeBorder}`}
-                    title={`${styleMeta.label}: ${styleMeta.description}`}
-                  >
-                    <span>{styleMeta.emoji}</span>
-                    <span className="uppercase">{watch.category}</span>
+                  <div className="flex items-center gap-1.5">
+                    {/* Batch Selection Checkbox */}
+                    {isMultiSelectMode && (
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedBatchWatchIds((prev) =>
+                            prev.includes(watch.id) ? prev.filter((id) => id !== watch.id) : [...prev, watch.id]
+                          );
+                          horologyAudio.playCrownClick();
+                        }}
+                        className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                          isBatchSelected
+                            ? "bg-amber-500 border-amber-400 text-neutral-950 font-bold"
+                            : "bg-neutral-900 border-neutral-700 text-transparent hover:border-amber-400"
+                        }`}
+                      >
+                        <Check size={12} strokeWidth={3} />
+                      </div>
+                    )}
+
+                    {/* Prominent Style Badge (Dress, Diver, Chronograph, etc.) */}
+                    <div
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide border shadow-sm ${styleMeta.badgeBg} ${styleMeta.badgeText} ${styleMeta.badgeBorder}`}
+                      title={`${styleMeta.label}: ${styleMeta.description}`}
+                    >
+                      <span>{styleMeta.emoji}</span>
+                      <span className="uppercase">{watch.category}</span>
+                    </div>
                   </div>
 
-                  {/* Top Right Action Icons: Flip, Favorite, Move, Delete */}
+                  {/* Top Right Action Icons: Flip, Move to Vitrine, Favorite, Delete */}
                   <div className="flex items-center gap-1">
                     {/* Quick Flip to Caseback Button */}
                     <button
@@ -500,15 +755,19 @@ export const WatchCase: React.FC<WatchCaseProps> = ({
                       <RotateCw size={13} className={flippedCards[watch.id] ? "rotate-180 transition-transform" : ""} />
                     </button>
 
-                    {/* Move to Collection Button */}
+                    {/* Move to Collection / Vitrine Button */}
                     <button
                       id={`move-col-btn-${watch.id}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         setMovingWatchId((prev) => (prev === watch.id ? null : watch.id));
                       }}
-                      className="p-1.5 rounded-full text-neutral-400 hover:text-amber-300 bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-700/50 transition-colors"
-                      title="Move to another collection"
+                      className={`p-1.5 rounded-full transition-colors border ${
+                        isMoving
+                          ? "bg-amber-500 text-neutral-950 border-amber-400"
+                          : "text-neutral-400 hover:text-amber-300 bg-neutral-900/80 hover:bg-neutral-800 border-neutral-700/50"
+                      }`}
+                      title="Move timepiece to another vitrine box"
                     >
                       <ArrowRightLeft size={13} />
                     </button>
@@ -556,33 +815,54 @@ export const WatchCase: React.FC<WatchCaseProps> = ({
                   </div>
                 </div>
 
-                {/* Move to Collection Popover Menu */}
+                {/* Move to Vitrine Popover Menu */}
                 {isMoving && (
                   <div
-                    className="absolute top-12 right-3 z-30 bg-neutral-950 p-2.5 rounded-xl border border-amber-500/40 shadow-2xl space-y-1.5 min-w-[170px]"
+                    className="absolute top-12 right-3 z-30 bg-neutral-950 p-3 rounded-2xl border-2 border-amber-500/60 shadow-2xl space-y-1.5 min-w-[200px] animate-in fade-in zoom-in-95 duration-150"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <span className="text-[10px] uppercase font-bold text-neutral-400 block px-1">
-                      Move to Vitrine:
-                    </span>
-                    {collections.map((c) => (
+                    <div className="flex items-center justify-between pb-1 mb-1 border-b border-neutral-800">
+                      <span className="text-[10px] uppercase font-bold text-amber-400 block tracking-wider">
+                        Move To Vitrine:
+                      </span>
                       <button
-                        key={c.id}
-                        onClick={() => {
-                          onMoveWatchCollection(watch.id, c.id);
-                          setMovingWatchId(null);
-                          horologyAudio.playCrownClick();
-                        }}
-                        className={`w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${
-                          watch.collectionId === c.id
-                            ? "bg-amber-500/20 text-amber-300 font-bold"
-                            : "hover:bg-neutral-800 text-neutral-200"
-                        }`}
+                        onClick={() => setMovingWatchId(null)}
+                        className="text-neutral-500 hover:text-neutral-300 text-xs"
                       >
-                        <span className="truncate">{c.name}</span>
-                        {watch.collectionId === c.id && <Check size={12} />}
+                        ✕
                       </button>
-                    ))}
+                    </div>
+                    {collections.map((c) => {
+                      const isCurrent = watch.collectionId === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          id={`move-target-${c.id}`}
+                          onClick={() => {
+                            onMoveWatchCollection(watch.id, c.id);
+                            setMovingWatchId(null);
+                            horologyAudio.playCrownClick();
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between gap-2 transition-all ${
+                            isCurrent
+                              ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30"
+                              : "hover:bg-neutral-800 text-neutral-200 hover:text-white"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="text-amber-400">{getCollectionIcon(c.icon)}</span>
+                            <span className="truncate">{c.name}</span>
+                          </div>
+                          {isCurrent ? (
+                            <span className="text-[10px] font-mono text-amber-400 shrink-0 font-bold">Current</span>
+                          ) : (
+                            <span className="text-[10px] font-mono text-neutral-500 shrink-0">
+                              {watchCountByCollection[c.id] || 0}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -644,10 +924,10 @@ export const WatchCase: React.FC<WatchCaseProps> = ({
                   <div className="mt-2.5 p-1.5 rounded-lg bg-neutral-900/90 border border-neutral-800 flex items-center justify-between gap-1 text-[11px]">
                     <div className="flex items-center gap-1 text-amber-300 font-medium truncate">
                       <span>{movementMeta.iconSymbol}</span>
-                      <span className="font-semibold">{watch.movement.type}</span>
+                      <span className="font-semibold">{watch?.movement?.type || "Automatic"}</span>
                     </div>
                     <div className="text-[10px] font-mono text-neutral-400 shrink-0">
-                      {watch.movement.caliber.split(" ")[0]} • {watch.movement.frequencyVph / 1000}k vph
+                      {(watch?.movement?.caliber || "Calibre").split(" ")[0]} • {((watch?.movement?.frequencyVph || 28800) / 1000).toFixed(0)}k vph
                     </div>
                   </div>
 
@@ -658,45 +938,107 @@ export const WatchCase: React.FC<WatchCaseProps> = ({
                       <span>Story Behind The Piece</span>
                     </div>
                     <p className="text-[11px] text-neutral-300 line-clamp-2 leading-relaxed italic">
-                      "{watch.facts.storyBlurb || watch.facts.tagline || (watch.facts.historicalSignificance ? watch.facts.historicalSignificance.split('.')[0] + '.' : 'A landmark horological creation.')}"
+                      "{watch?.facts?.storyBlurb || watch?.facts?.tagline || (watch?.facts?.historicalSignificance ? watch.facts.historicalSignificance.split('.')[0] + '.' : 'A landmark horological creation.')}"
                     </p>
                   </div>
 
-                  {/* Secondary Metrics & Provenance Tag */}
+                  {/* Secondary Metrics & Provenance Tag & Vitrine Assignment */}
                   <div className="flex items-center justify-between text-[11px] text-neutral-400 mt-2.5 font-mono">
-                    <span className="truncate">
+                    <div className="flex items-center gap-1.5 truncate">
+                      {watchCol && (
+                        <button
+                          id={`card-vitrine-tag-${watch.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMovingWatchId((prev) => (prev === watch.id ? null : watch.id));
+                          }}
+                          className="px-1.5 py-0.5 rounded bg-neutral-900 hover:bg-neutral-800 text-[10px] font-sans text-neutral-300 hover:text-amber-300 border border-neutral-700/60 hover:border-amber-500/40 flex items-center gap-1 transition-colors"
+                          title={`Assigned to Vitrine: ${watchCol.name} (Click to move)`}
+                        >
+                          <span className="text-amber-400">{getCollectionIcon(watchCol.icon)}</span>
+                          <span className="truncate max-w-[85px]">{watchCol.name}</span>
+                        </button>
+                      )}
                       {watch.provenanceSource && HOROLOGY_SOURCES[watch.provenanceSource] ? (
-                        <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-sans font-semibold mr-1.5 ${HOROLOGY_SOURCES[watch.provenanceSource].badgeBg} ${HOROLOGY_SOURCES[watch.provenanceSource].badgeColor} border ${HOROLOGY_SOURCES[watch.provenanceSource].badgeBorder}`}>
+                        <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-sans font-semibold ${HOROLOGY_SOURCES[watch.provenanceSource].badgeBg} ${HOROLOGY_SOURCES[watch.provenanceSource].badgeColor} border ${HOROLOGY_SOURCES[watch.provenanceSource].badgeBorder}`}>
                           {HOROLOGY_SOURCES[watch.provenanceSource].shortName}
                         </span>
                       ) : null}
-                      {watch.caseDiameter}mm
-                    </span>
+                      <span>{watch.caseDiameter}mm</span>
+                    </div>
                     {watch.marketPrice && (
                       <span className="text-amber-400 font-semibold shrink-0">{watch.marketPrice.split(" ")[0]}</span>
                     )}
                   </div>
                 </div>
               </div>
+            </ErrorBoundary>
             );
           })}
 
-          {/* Empty Cushion Slot to Add Watch */}
-          <div
-            id="add-watch-slot-card"
-            onClick={onAddNewWatch}
-            className="rounded-2xl p-6 flex flex-col items-center justify-center min-h-[360px] border-2 border-dashed border-neutral-700/60 hover:border-amber-500/60 transition-all duration-300 cursor-pointer group bg-neutral-900/30 hover:bg-neutral-900/60"
-          >
-            <div className="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-neutral-950 transition-all shadow-lg mb-4">
-              <Plus size={24} />
+          {/* If vitrine has 0 watches matching or empty, show prominent Empty Vitrine Fresh Slate Card */}
+          {filteredWatches.length === 0 && (
+            <div
+              id="empty-vitrine-slate-card"
+              className="col-span-full rounded-3xl p-8 sm:p-12 border-2 border-dashed border-amber-500/30 bg-gradient-to-b from-neutral-900/40 via-neutral-950/60 to-black/80 flex flex-col items-center justify-center text-center my-4 backdrop-blur-sm"
+            >
+              <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 shadow-xl shadow-amber-500/10">
+                <Sparkles size={28} />
+              </div>
+              <h3 className="text-lg font-serif font-bold text-neutral-100 mb-1">
+                {searchQuery || filterCategory !== "All" || filterMovement !== "All"
+                  ? "No Timepieces Match Filter Criteria"
+                  : `Vitrine "${currentCollection ? currentCollection.name : "Showcase"}" is Empty`}
+              </h3>
+              <p className="text-xs text-neutral-400 max-w-md mx-auto mb-6 leading-relaxed">
+                {searchQuery || filterCategory !== "All" || filterMovement !== "All"
+                  ? "Try clearing your search query or style filters to see all timepieces in this vitrine."
+                  : "You have a fresh, clean vitrine ready for your bespoke horological acquisitions and custom references."}
+              </p>
+
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <button
+                  id="empty-state-add-watch-btn"
+                  onClick={onAddNewWatch}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-neutral-950 font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 active:scale-95 transition-all"
+                >
+                  <Plus size={16} />
+                  <span>Input First Watch</span>
+                </button>
+
+                <button
+                  id="empty-state-restore-defaults-btn"
+                  onClick={() => {
+                    onOpenResetVitrine(activeCollectionId);
+                    horologyAudio.playCrownClick();
+                  }}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-200 hover:text-amber-300 border border-neutral-700 hover:border-amber-500/40 text-xs font-semibold tracking-wide transition-all"
+                >
+                  <RotateCcw size={14} className="text-amber-400" />
+                  <span>Restore Curated Defaults</span>
+                </button>
+              </div>
             </div>
-            <h4 className="text-sm font-semibold text-neutral-200 group-hover:text-amber-300 transition-colors">
-              Add Timepiece to Vitrine
-            </h4>
-            <p className="text-xs text-neutral-400 text-center max-w-[200px] mt-1.5">
-              Enter any watch model or vintage reference to render, classify style, and inspect
-            </p>
-          </div>
+          )}
+
+          {/* Empty Cushion Slot to Add Watch */}
+          {filteredWatches.length > 0 && (
+            <div
+              id="add-watch-slot-card"
+              onClick={onAddNewWatch}
+              className="rounded-2xl p-6 flex flex-col items-center justify-center min-h-[360px] border-2 border-dashed border-neutral-700/60 hover:border-amber-500/60 transition-all duration-300 cursor-pointer group bg-neutral-900/30 hover:bg-neutral-900/60"
+            >
+              <div className="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-neutral-950 transition-all shadow-lg mb-4">
+                <Plus size={24} />
+              </div>
+              <h4 className="text-sm font-semibold text-neutral-200 group-hover:text-amber-300 transition-colors">
+                Add Timepiece to Vitrine
+              </h4>
+              <p className="text-xs text-neutral-400 text-center max-w-[200px] mt-1.5">
+                Enter any watch model or vintage reference to render, classify style, and inspect
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

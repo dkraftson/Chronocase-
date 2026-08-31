@@ -36,17 +36,25 @@ export function synthesizeWatchFromQuery(
   sourceLens?: string
 ): GeneratedWatchPayload {
   const q = query.toLowerCase().trim();
+  const qClean = q.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const qTokens = qClean.split(" ").filter((t) => t.length > 0);
 
   // 1. Check for close matches in our extensive authentic curated database
   const directMatch = ALL_KNOWN_PIECES.find((w) => {
-    const brandLower = w.brand.toLowerCase();
-    const nameLower = w.name.toLowerCase();
-    const refLower = w.reference.toLowerCase();
-    return (
-      q.includes(nameLower) ||
-      (q.includes(brandLower) && nameLower.split(" ").some((term) => term.length > 3 && q.includes(term))) ||
-      q.includes(refLower)
-    );
+    const brandClean = w.brand.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+    const nameClean = w.name.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+    const refClean = w.reference.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+    const combined = `${brandClean} ${nameClean} ${refClean}`.replace(/\s+/g, " ").trim();
+
+    // Exact or full substring match
+    if (combined.includes(qClean) || qClean.includes(`${brandClean} ${nameClean}`)) {
+      return true;
+    }
+    // Token-based matching: if all tokens of the user query exist in the watch description
+    if (qTokens.length > 0 && qTokens.every((token) => combined.includes(token))) {
+      return true;
+    }
+    return false;
   });
 
   if (directMatch) {
@@ -91,37 +99,66 @@ export function synthesizeWatchFromQuery(
     };
   }
 
-  // 2. Heuristic brand extraction
+  // 2. Heuristic brand extraction with strict word boundaries to prevent false positives (e.g. "ap" in "chronograph")
   let detectedBrand = "Fine Horology Maison";
   const brandKeywords: Array<{ name: string; aliases: string[] }> = [
-    { name: "Rolex", aliases: ["rolex"] },
-    { name: "Omega", aliases: ["omega"] },
-    { name: "Patek Philippe", aliases: ["patek", "philippe", "calatrava", "nautilus", "aquanaut"] },
-    { name: "Audemars Piguet", aliases: ["audemars", "piguet", "ap", "royal oak", "offshore"] },
-    { name: "Vacheron Constantin", aliases: ["vacheron", "constantin", "historiques", "overseas"] },
-    { name: "A. Lange & Söhne", aliases: ["lange", "sohne", "datograph", "zeitwerk"] },
-    { name: "Cartier", aliases: ["cartier", "santos", "tank", "ballon"] },
-    { name: "Grand Seiko", aliases: ["grand seiko", "gs", "spring drive"] },
-    { name: "Tudor", aliases: ["tudor", "pelagos", "black bay"] },
-    { name: "Jaeger-LeCoultre", aliases: ["jaeger", "lecoultre", "jlc", "reverso"] },
-    { name: "IWC Schaffhausen", aliases: ["iwc", "schaffhausen", "portugieser", "pilot"] },
-    { name: "Breitling", aliases: ["breitling", "navitimer", "chronomat", "superocean"] },
-    { name: "TAG Heuer", aliases: ["tag heuer", "heuer", "monaco", "carrera", "autavia"] },
-    { name: "Panerai", aliases: ["panerai", "luminor", "radiomir"] },
-    { name: "Zenith", aliases: ["zenith", "el primero", "chronomaster"] },
-    { name: "Blancpain", aliases: ["blancpain", "fifty fathoms"] },
-    { name: "Seiko", aliases: ["seiko", "prospex", "presage", "skx"] },
-    { name: "Hamilton", aliases: ["hamilton", "khaki"] },
-    { name: "Tissot", aliases: ["tissot", "prx", "seastar"] },
-    { name: "Longines", aliases: ["longines", "spirit", "legend diver"] },
-    { name: "Sinn", aliases: ["sinn"] },
-    { name: "Oris", aliases: ["oris", "aquis", "pointer date"] },
-    { name: "Breguet", aliases: ["breguet", "type xx", "marine"] },
-    { name: "F.P. Journe", aliases: ["fp journe", "journe", "chronometre souverain"] },
+    { name: "Richard Mille", aliases: ["richard mille", "richard", "mille", "rm", "rm011", "rm11", "rm35", "rm035", "rm027", "rm27", "rm055", "rm55", "rm67", "rafael nadal", "felipe massa", "bubba watson", "yohan blake"] },
+    { name: "Franck Muller", aliases: ["franck muller", "franck", "muller", "vanguard", "crazy hours", "casablanca", "cintree curvex"] },
+    { name: "Hublot", aliases: ["hublot", "big bang", "spirit of big bang", "classic fusion", "unico", "meca-10"] },
+    { name: "Timex", aliases: ["timex", "marlin", "ironman", "waterbury", "fairfield"] },
+    { name: "Casio", aliases: ["casio", "g-shock", "gshock", "edifice", "oceanus", "pro trek", "protrek"] },
+    { name: "Citizen", aliases: ["citizen", "eco-drive", "ecodrive", "promaster", "tsuyosa", "corso", "brycen", "nighthawk"] },
+    { name: "Seiko", aliases: ["seiko", "prospex", "presage", "king seiko", "astron", "skx", "alpinist", "cocktail time", "snkl", "snkn", "ssb"] },
+    { name: "Bulova", aliases: ["bulova", "accutron", "precisionist", "lunar pilot", "sutton", "marine star", "devil diver"] },
+    { name: "Orient", aliases: ["orient", "bambino", "kamasu", "mako", "ray", "orient star"] },
+    { name: "Invicta", aliases: ["invicta", "pro diver"] },
+    { name: "Stuhrling", aliases: ["stuhrling", "stührling"] },
+    { name: "Fossil", aliases: ["fossil", "townsman"] },
+    { name: "Swatch", aliases: ["swatch", "moonswatch", "sistem51"] },
+    { name: "Hamilton", aliases: ["hamilton", "khaki", "jazzmaster", "ventura", "murph", "intra-matic"] },
+    { name: "Tissot", aliases: ["tissot", "prx", "seastar", "le locle", "gentleman", "everytime", "chemin des tourelles"] },
+    { name: "Tudor", aliases: ["tudor", "pelagos", "black bay", "ranger"] },
+    { name: "Rolex", aliases: ["rolex", "submariner", "daytona", "datejust", "day date", "explorer", "sea dweller", "air king", "sky dweller", "yacht master", "milgauss"] },
+    { name: "Omega", aliases: ["omega", "speedmaster", "seamaster", "aqua terra", "planet ocean", "constellation", "de ville", "railmaster"] },
+    { name: "Audemars Piguet", aliases: ["audemars piguet", "audemars", "piguet", "royal oak", "offshore", "code 11.59"] },
+    { name: "Patek Philippe", aliases: ["patek philippe", "patek", "philippe", "calatrava", "nautilus", "aquanaut", "gondolo"] },
+    { name: "Vacheron Constantin", aliases: ["vacheron constantin", "vacheron", "constantin", "historiques", "overseas", "patrimony"] },
+    { name: "A. Lange & Söhne", aliases: ["lange & söhne", "lange and sohne", "a. lange", "lange", "sohne", "datograph", "zeitwerk", "saxonia"] },
+    { name: "Cartier", aliases: ["cartier", "santos", "tank", "ballon", "panthere", "pasha"] },
+    { name: "Grand Seiko", aliases: ["grand seiko", "spring drive", "snowflake", "white birch"] },
+    { name: "Jaeger-LeCoultre", aliases: ["jaeger-lecoultre", "jaeger lecoultre", "jaeger", "lecoultre", "reverso", "polaris", "memovox"] },
+    { name: "IWC Schaffhausen", aliases: ["iwc schaffhausen", "iwc", "schaffhausen", "portugieser", "portofino"] },
+    { name: "Breitling", aliases: ["breitling", "navitimer", "chronomat", "superocean", "avenger", "premier", "top time"] },
+    { name: "TAG Heuer", aliases: ["tag heuer", "heuer", "monaco", "carrera", "autavia", "aquaracer", "formula 1"] },
+    { name: "Panerai", aliases: ["panerai", "luminor", "radiomir", "submersible"] },
+    { name: "Zenith", aliases: ["zenith", "el primero", "chronomaster", "defy"] },
+    { name: "Blancpain", aliases: ["blancpain", "fifty fathoms", "villeret", "air command"] },
+    { name: "Longines", aliases: ["longines", "spirit", "legend diver", "hydroconquest", "master collection"] },
+    { name: "Sinn", aliases: ["sinn", "556", "104", "u1", "u50"] },
+    { name: "Oris", aliases: ["oris", "aquis", "pointer date", "divers sixty five", "propilot", "artelier"] },
+    { name: "Raymond Weil", aliases: ["raymond weil", "freelancer", "toccata"] },
+    { name: "Maurice Lacroix", aliases: ["maurice lacroix", "aikon", "masterpiece", "eliros", "pontos"] },
+    { name: "Breguet", aliases: ["breguet", "type xx", "marine", "tradition", "classique"] },
+    { name: "F.P. Journe", aliases: ["fp journe", "f.p. journe", "journe", "chronometre souverain", "resonance"] },
+    { name: "Baltic", aliases: ["baltic", "aquascaphe", "bicompax", "mr01"] },
+    { name: "Christopher Ward", aliases: ["christopher ward", "c60", "the twelve", "bel canto"] },
+    { name: "Vaer", aliases: ["vaer", "c5", "d5", "a5", "g7"] },
+    { name: "Brew", aliases: ["brew", "metric", "retrograph"] },
+    { name: "Farer", aliases: ["farer", "cobb", "stanhope", "lander"] },
+    { name: "Yema", aliases: ["yema", "superman", "rallygraf"] },
+    { name: "Movado", aliases: ["movado", "museum", "muesuem", "museum classic", "bold", "horwitt", "1881"] },
+    { name: "Doxa", aliases: ["doxa", "sub 300", "sub 200"] },
+    { name: "Zodiac", aliases: ["zodiac", "super sea wolf", "sea wolf"] },
   ];
 
   for (const b of brandKeywords) {
-    if (b.aliases.some((alias) => q.includes(alias))) {
+    const matched = b.aliases.some((alias) => {
+      // Use regex word boundary check so short aliases like "ap" don't match inside "chronograph"
+      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(`(^|\\s|[^a-z0-9])${escaped}($|\\s|[^a-z0-9])`, "i");
+      return regex.test(query);
+    });
+    if (matched) {
       detectedBrand = b.name;
       break;
     }
@@ -129,7 +166,9 @@ export function synthesizeWatchFromQuery(
 
   // 3. Category Heuristic
   let category: WatchCategory = "Everyday";
-  if (q.includes("diver") || q.includes("sub") || q.includes("seamaster") || q.includes("pelagos") || q.includes("300m") || q.includes("ocean")) {
+  if (q.includes("skeleton") || q.includes("openworked") || q.includes("open heart") || q.includes("squelette")) {
+    category = "Skeleton";
+  } else if (q.includes("diver") || q.includes("sub") || q.includes("seamaster") || q.includes("pelagos") || q.includes("300m") || q.includes("ocean")) {
     category = "Diver";
   } else if (q.includes("chrono") || q.includes("daytona") || q.includes("speedmaster") || q.includes("tachymeter")) {
     category = "Chronograph";
@@ -149,7 +188,8 @@ export function synthesizeWatchFromQuery(
 
   // 4. Color heuristics
   let dialColor = "#e2e8f0"; // Default to classic horological brushed silver / opaline
-  if (q.includes("silver") || q.includes("rhodium") || q.includes("argent") || q.includes("opaline") || q.includes("steel")) dialColor = "#e2e8f0";
+  if (category === "Skeleton") dialColor = "#18181b";
+  else if (q.includes("silver") || q.includes("rhodium") || q.includes("argent") || q.includes("opaline") || q.includes("steel")) dialColor = "#e2e8f0";
   else if (q.includes("white") || q.includes("polar") || q.includes("snow") || q.includes("panda")) dialColor = "#f8fafc";
   else if (q.includes("black") || q.includes("noir") || q.includes("submariner") || q.includes("speedmaster")) dialColor = "#09090b";
   else if (q.includes("blue") || q.includes("navy")) dialColor = "#1e3a8a";
@@ -170,21 +210,67 @@ export function synthesizeWatchFromQuery(
   else if (q.includes("ceramic")) caseFinish = "black_ceramic";
   else if (q.includes("two tone") || q.includes("rolesor") || q.includes("bicolor")) caseFinish = "two_tone";
 
-  // 6. Case shape
+  // 6. Case shape & Nonstandard silhouettes
   let caseShape: WatchRenderingConfig["caseShape"] = "round";
-  if (q.includes("square") || q.includes("monaco") || q.includes("santos")) caseShape = "square";
+  if (q.includes("bullhead")) caseShape = "bullhead";
+  else if (q.includes("square") || q.includes("monaco") || q.includes("santos")) caseShape = "square";
   else if (q.includes("tank") || q.includes("reverso")) caseShape = "tank";
-  else if (q.includes("tonneau")) caseShape = "tonneau";
+  else if (q.includes("tonneau") || detectedBrand === "Richard Mille" || detectedBrand === "Franck Muller" || q.includes("spirit of big bang")) caseShape = "tonneau";
   else if (q.includes("cushion") || q.includes("panerai")) caseShape = "cushion";
   else if (q.includes("octagonal") || q.includes("royal oak")) caseShape = "octagonal";
 
-  // 7. Bezel Type
+  // 7. Bezel Type & Screws
   let caseBezelType: WatchRenderingConfig["caseBezelType"] = "smooth";
-  if (category === "Diver") caseBezelType = "diver_60";
-  else if (category === "Chronograph") caseBezelType = "tachymeter";
-  else if (category === "GMT / Travel") caseBezelType = "gmt_24";
-  else if (caseShape === "octagonal") caseBezelType = "octagonal_screws";
-  else if (q.includes("fluted")) caseBezelType = "fluted";
+  let bezelScrews: WatchRenderingConfig["bezelScrews"] = "none";
+  let crownStyle: WatchRenderingConfig["crownStyle"] = "standard_fluted";
+  let crownRingColor: string | undefined = undefined;
+  let pusherStyle: WatchRenderingConfig["pusherStyle"] = "none";
+  let skeletonDetails: WatchRenderingConfig["skeletonDetails"] = "none";
+  let rehautScale: WatchRenderingConfig["rehautScale"] = "none";
+  let rehautColor: string | undefined = undefined;
+  let rehautTextColor: string | undefined = undefined;
+
+  if (detectedBrand === "Richard Mille" || (caseShape === "tonneau" && (category === "Skeleton" || q.includes("mille")))) {
+    caseShape = "tonneau";
+    caseFinish = q.includes("gold") ? "rose_gold" : "titanium";
+    bezelScrews = "richard_mille_spline";
+    crownStyle = "richard_mille_flange";
+    crownRingColor = q.includes("yellow") ? "#eab308" : q.includes("green") ? "#10b981" : q.includes("orange") ? "#f97316" : "#ef4444";
+    pusherStyle = category === "Chronograph" || q.includes("rm 011") || q.includes("chrono") ? "richard_mille_tactical" : "none";
+    skeletonDetails = "richard_mille_tourbillon";
+    rehautScale = "tachymeter";
+    rehautColor = "#0f172a";
+    rehautTextColor = "#f59e0b";
+    category = "Skeleton";
+    dialColor = "#09090b";
+  } else if (caseShape === "bullhead") {
+    crownStyle = "bullhead_top";
+    pusherStyle = "bullhead_top";
+    category = "Chronograph";
+    caseBezelType = "tachymeter";
+  } else if (category === "Chronograph") {
+    caseBezelType = "tachymeter";
+    if (q.includes("daytona") || q.includes("screw down")) {
+      pusherStyle = "screw_down";
+    } else if (q.includes("offshore") || q.includes("royal oak offshore") || q.includes("datograph") || q.includes("paddle")) {
+      pusherStyle = "rectangular_paddle";
+      if (q.includes("offshore") || q.includes("royal oak")) bezelScrews = "octagonal_hex";
+    } else if (q.includes("monaco") || caseShape === "square") {
+      crownStyle = "left_hand";
+      pusherStyle = "oversized_pump";
+    } else {
+      pusherStyle = "oversized_pump";
+    }
+  } else if (category === "Diver") {
+    caseBezelType = "diver_60";
+  } else if (category === "GMT / Travel") {
+    caseBezelType = "gmt_24";
+  } else if (caseShape === "octagonal") {
+    caseBezelType = "octagonal_screws";
+    bezelScrews = "octagonal_hex";
+  } else if (q.includes("fluted")) {
+    caseBezelType = "fluted";
+  }
 
   // Clean model name
   const modelName = query
@@ -224,16 +310,19 @@ export function synthesizeWatchFromQuery(
       caseFinish,
       caseBezelType,
       bezelColor: caseBezelType === "diver_60" ? (dialColor === "#f8fafc" ? "#0f172a" : dialColor) : undefined,
-      dialColor,
-      dialPattern: category === "Dress" ? "guilloche" : category === "Integrated" ? "tapisserie" : "sunburst",
-      markerType: category === "Dress" ? "roman_numerals" : category === "Diver" ? "diver_mixed" : "applied_batons",
+      dialColor: (detectedBrand === "Movado" || q.includes("museum") || q.includes("muesuem")) ? "#050505" : dialColor,
+      dialPattern: (detectedBrand === "Movado" || q.includes("museum") || q.includes("muesuem")) ? "matte" : category === "Skeleton" ? "skeleton" : category === "Dress" ? "guilloche" : category === "Integrated" ? "tapisserie" : "sunburst",
+      markerType: (detectedBrand === "Movado" || q.includes("museum") || q.includes("muesuem")) ? "museum_dot" : category === "Dress" || category === "Skeleton" ? "roman_numerals" : category === "Diver" ? "diver_mixed" : "applied_batons",
       markerColor: caseFinish.includes("gold") ? "#f59e0b" : "#e2e8f0",
-      handsType: category === "Diver" ? "mercedes" : category === "Dress" ? "dauphine" : "baton",
+      museumDotColor: caseFinish.includes("gold") ? "#eab308" : "#cbd5e1",
+      hideDialText: (detectedBrand === "Movado" || q.includes("museum") || q.includes("muesuem")),
+      handsType: (detectedBrand === "Movado" || q.includes("museum") || q.includes("muesuem")) ? "dauphine" : category === "Skeleton" ? "skeleton" : category === "Diver" ? "mercedes" : category === "Dress" ? "dauphine" : "baton",
       handsColor: caseFinish.includes("gold") ? "#fbbf24" : "#ffffff",
-      secondsHandColor: category === "Chronograph" || category === "Diver" ? "#ef4444" : "#ffffff",
-      lumeColor: category === "Dress" ? "none" : "ice_blue",
-      dateWindow: true,
-      cyclops: detectedBrand === "Rolex",
+      secondsHandColor: (detectedBrand === "Movado" || q.includes("museum") || q.includes("muesuem")) ? "none" : category === "Chronograph" || category === "Diver" ? "#ef4444" : "#38bdf8",
+      lumeColor: (category === "Dress" || category === "Skeleton" || detectedBrand === "Movado") ? "none" : "ice_blue",
+      hasOpenHeartOrTourbillon: category === "Skeleton",
+      dateWindow: (detectedBrand === "Movado" || q.includes("museum") || q.includes("muesuem")) ? false : category !== "Skeleton",
+      cyclops: detectedBrand === "Rolex" && category !== "Skeleton",
       subdials:
         category === "Chronograph"
           ? [
@@ -242,8 +331,16 @@ export function synthesizeWatchFromQuery(
               { position: "9", label: "SEC", type: "seconds" },
             ]
           : undefined,
-      strapType: category === "Dress" ? "leather_alligator" : category === "Integrated" ? "integrated_steel" : "oyster_bracelet",
-      strapColor: category === "Dress" ? "#271c19" : "#94a3b8",
+      strapType: category === "Dress" ? "leather_alligator" : category === "Integrated" ? "integrated_steel" : (caseShape === "tonneau" ? "rubber_oysterflex" : "oyster_bracelet"),
+      strapColor: category === "Dress" ? "#271c19" : (caseShape === "tonneau" ? "#18181b" : "#94a3b8"),
+      pusherStyle,
+      crownStyle,
+      crownRingColor,
+      bezelScrews,
+      skeletonDetails,
+      rehautScale,
+      rehautColor,
+      rehautTextColor,
     },
     facts: {
       tagline: `An Exemplar of Contemporary ${detectedBrand} Craftsmanship`,

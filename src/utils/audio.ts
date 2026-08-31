@@ -348,6 +348,112 @@ class HorologyAudio {
   }
 
   /**
+   * Manual Mainspring Crown Winding Ratchet Click
+   * Simulates the click spring slipping over the ratchet wheel teeth as tension builds in the mainspring.
+   */
+  public playWindingRatchet(tensionLevel = 0.5) {
+    if (this.isMuted) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx || !this.masterGain) return;
+      if (ctx.state === "suspended") ctx.resume();
+
+      const now = ctx.currentTime;
+      const basePitch = 1200 + tensionLevel * 400; // Pitch rises slightly as spring is wound tighter
+
+      // Rapid mechanical ratchet click
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+
+      filter.type = "bandpass";
+      filter.frequency.setValueAtTime(basePitch, now);
+      filter.Q.setValueAtTime(5.0, now);
+
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(basePitch * 1.4, now);
+      osc.frequency.exponentialRampToValueAtTime(basePitch * 0.6, now + 0.02);
+
+      gain.gain.setValueAtTime(0.32, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.024);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(now);
+      osc.stop(now + 0.026);
+    } catch {}
+  }
+
+  /**
+   * Automatic Rotor Gyroscopic Spin / Free-Wobble (e.g. Valjoux 7750, high-speed ceramic ball-bearing rotor)
+   */
+  public playRotorWobble() {
+    if (this.isMuted) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx || !this.masterGain) return;
+      if (ctx.state === "suspended") ctx.resume();
+
+      const now = ctx.currentTime;
+      const duration = 0.45;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(420, now);
+      filter.frequency.linearRampToValueAtTime(180, now + duration);
+
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(260, now);
+      osc.frequency.linearRampToValueAtTime(90, now + duration);
+
+      gain.gain.setValueAtTime(0.24, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(now);
+      osc.stop(now + duration);
+    } catch {}
+  }
+
+  /**
+   * Chronograph Flyback / Heart-Cam Reset Snap
+   */
+  public playFlybackReset() {
+    if (this.isMuted) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx || !this.masterGain) return;
+      if (ctx.state === "suspended") ctx.resume();
+
+      const now = ctx.currentTime;
+
+      // Heavy hammer strike against heart cam
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(540, now);
+      osc.frequency.exponentialRampToValueAtTime(110, now + 0.035);
+
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(now);
+      osc.stop(now + 0.045);
+    } catch {}
+  }
+
+  /**
    * Haute Horlogerie Cathedral Minute Repeater Gong Chime.
    * Striking steel gong wire wrapped around the movement.
    */

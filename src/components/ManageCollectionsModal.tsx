@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { WatchCollection, CaseMaterial, CushionColor, VaultLighting } from "../types";
+import { WatchCollection, CaseMaterial, CushionColor, VaultLighting, Watch } from "../types";
 import {
   X,
   Plus,
@@ -15,16 +15,24 @@ import {
   Award,
   Palette,
   Clock,
+  RotateCcw,
+  ArrowRightLeft,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { horologyAudio } from "../utils/audio";
 
 interface ManageCollectionsModalProps {
   collections: WatchCollection[];
+  watches?: Watch[];
   activeCollectionId: string | "all";
   onSelectCollection: (id: string | "all") => void;
   onCreateCollection: (newCol: WatchCollection) => void;
   onUpdateCollection: (updatedCol: WatchCollection) => void;
   onDeleteCollection: (colId: string) => void;
+  onMoveWatchCollection?: (watchId: string, targetCollectionId: string) => void;
+  onTransferAllWatches?: (sourceCollectionId: string, targetCollectionId: string) => void;
+  onOpenResetVitrine?: (colId: string) => void;
   onClose: () => void;
   watchCountByCollection: Record<string, number>;
 }
@@ -66,16 +74,25 @@ const CUSHIONS: { id: CushionColor; label: string; color: string }[] = [
 
 export const ManageCollectionsModal: React.FC<ManageCollectionsModalProps> = ({
   collections,
+  watches = [],
   activeCollectionId,
   onSelectCollection,
   onCreateCollection,
   onUpdateCollection,
   onDeleteCollection,
+  onMoveWatchCollection,
+  onTransferAllWatches,
+  onOpenResetVitrine,
   onClose,
   watchCountByCollection,
 }) => {
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [editingCollectionId, setEditingCollectionId] = useState<string | null>(null);
+
+  // Transfer modal / popover state
+  const [transferSourceId, setTransferSourceId] = useState<string | null>(null);
+  const [transferTargetId, setTransferTargetId] = useState<string>("");
+  const [expandedColId, setExpandedColId] = useState<string | null>(null);
 
   // Form State
   const [name, setName] = useState("");
@@ -152,6 +169,16 @@ export const ManageCollectionsModal: React.FC<ManageCollectionsModalProps> = ({
     setEditingCollectionId(null);
   };
 
+  const handleExecuteTransfer = () => {
+    if (!transferSourceId || !transferTargetId || transferSourceId === transferTargetId) return;
+    if (onTransferAllWatches) {
+      onTransferAllWatches(transferSourceId, transferTargetId);
+      horologyAudio.playCaseLid();
+    }
+    setTransferSourceId(null);
+    setTransferTargetId("");
+  };
+
   const getIconComponent = (iconId?: string) => {
     const found = AVAILABLE_ICONS.find((i) => i.id === iconId);
     const IconCmp = found ? found.icon : Crown;
@@ -181,15 +208,65 @@ export const ManageCollectionsModal: React.FC<ManageCollectionsModalProps> = ({
         <div className="mb-6">
           <div className="flex items-center gap-2 text-amber-400 text-xs font-mono uppercase tracking-wider mb-1">
             <FolderPlus size={14} />
-            <span>Curatorial Organization</span>
+            <span>Curatorial Organization & Relocation</span>
           </div>
           <h2 className="text-2xl font-serif font-bold text-neutral-100">
             Manage Watch Collections & Vitrines
           </h2>
           <p className="text-xs text-neutral-400 mt-1">
-            Organize your timepieces into specialized vitrine boxes (e.g. Holy Grails, Daily Divers, Vintage Dress) with custom materials and ambient lighting.
+            Organize your timepieces into specialized vitrine boxes, move individual watches, or transfer whole collections with a single click.
           </p>
         </div>
+
+        {/* Transfer All Watches Modal Layer */}
+        {transferSourceId && (
+          <div
+            id="transfer-all-watches-dialog"
+            className="mb-6 p-4 rounded-2xl bg-amber-950/40 border border-amber-500/50 shadow-xl space-y-3 animate-in fade-in zoom-in-95 duration-150"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
+                <ArrowRightLeft size={16} />
+                <span>Transfer All Timepieces</span>
+              </div>
+              <button
+                onClick={() => setTransferSourceId(null)}
+                className="text-xs text-neutral-400 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+            <p className="text-xs text-neutral-300">
+              Move all <span className="font-bold text-amber-300">{watchCountByCollection[transferSourceId] || 0} timepieces</span> from{" "}
+              <span className="font-bold text-white">"{collections.find((c) => c.id === transferSourceId)?.name}"</span> to:
+            </p>
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <select
+                id="transfer-target-select"
+                value={transferTargetId}
+                onChange={(e) => setTransferTargetId(e.target.value)}
+                className="w-full sm:flex-1 px-3.5 py-2 rounded-xl bg-neutral-900 border border-neutral-700 text-xs text-neutral-100 focus:outline-none focus:border-amber-500"
+              >
+                <option value="">Select Destination Vitrine...</option>
+                {collections
+                  .filter((c) => c.id !== transferSourceId)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({watchCountByCollection[c.id] || 0} current pieces)
+                    </option>
+                  ))}
+              </select>
+              <button
+                id="confirm-transfer-all-btn"
+                disabled={!transferTargetId}
+                onClick={handleExecuteTransfer}
+                className="w-full sm:w-auto px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-neutral-950 font-bold text-xs uppercase tracking-wider disabled:opacity-40 transition-all shadow-md shadow-amber-500/20 active:scale-95 whitespace-nowrap"
+              >
+                Confirm Transfer
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Form View (Create or Edit) */}
         {isCreatingNew ? (
@@ -386,76 +463,169 @@ export const ManageCollectionsModal: React.FC<ManageCollectionsModalProps> = ({
               {collections.map((col) => {
                 const count = watchCountByCollection[col.id] || 0;
                 const isActive = activeCollectionId === col.id;
+                const isExpanded = expandedColId === col.id;
+                const colWatches = watches.filter((w) => w.collectionId === col.id);
 
                 return (
                   <div
                     key={col.id}
                     id={`collection-item-${col.id}`}
-                    className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 bg-neutral-900/60 ${
+                    className={`rounded-2xl border transition-all overflow-hidden bg-neutral-900/60 ${
                       isActive
                         ? "border-amber-500/80 ring-1 ring-amber-500/40 bg-amber-500/5"
                         : "border-neutral-800 hover:border-neutral-700"
                     }`}
                   >
-                    <div
-                      className="flex items-center gap-3.5 cursor-pointer flex-1"
-                      onClick={() => {
-                        onSelectCollection(col.id);
-                        horologyAudio.playCrownClick();
-                      }}
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
-                        {getIconComponent(col.icon)}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-neutral-100">{col.name}</h4>
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-300 border border-neutral-700">
-                            {count} {count === 1 ? "Timepiece" : "Timepieces"}
-                          </span>
-                          {isActive && (
-                            <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
-                              Active Vitrine
+                    <div className="p-4 flex items-center justify-between gap-4">
+                      <div
+                        className="flex items-center gap-3.5 cursor-pointer flex-1"
+                        onClick={() => {
+                          onSelectCollection(col.id);
+                          horologyAudio.playCrownClick();
+                        }}
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                          {getIconComponent(col.icon)}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-bold text-neutral-100">{col.name}</h4>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-300 border border-neutral-700">
+                              {count} {count === 1 ? "Timepiece" : "Timepieces"}
                             </span>
+                            {isActive && (
+                              <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
+                                Active Vitrine
+                              </span>
+                            )}
+                          </div>
+                          {col.description && (
+                            <p className="text-xs text-neutral-400 line-clamp-1 mt-0.5">{col.description}</p>
                           )}
                         </div>
-                        {col.description && (
-                          <p className="text-xs text-neutral-400 line-clamp-1 mt-0.5">{col.description}</p>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {/* Toggle individual watches expansion */}
+                        {colWatches.length > 0 && (
+                          <button
+                            id={`expand-watches-${col.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedColId((prev) => (prev === col.id ? null : col.id));
+                              horologyAudio.playCrownClick();
+                            }}
+                            className="px-2 py-1.5 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 hover:text-amber-300 text-xs font-medium flex items-center gap-1 transition-colors"
+                            title="View and organize individual timepieces"
+                          >
+                            <span>Watches</span>
+                            {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                          </button>
+                        )}
+
+                        {/* Transfer All Watches Button */}
+                        {count > 0 && collections.length > 1 && (
+                          <button
+                            id={`transfer-col-btn-${col.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTransferSourceId(col.id);
+                              setTransferTargetId("");
+                              horologyAudio.playCrownClick();
+                            }}
+                            className="p-2 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 hover:text-amber-400 transition-colors"
+                            title={`Transfer all ${count} watches from this vitrine to another`}
+                          >
+                            <ArrowRightLeft size={14} />
+                          </button>
+                        )}
+
+                        {onOpenResetVitrine && (
+                          <button
+                            id={`reset-col-${col.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenResetVitrine(col.id);
+                              horologyAudio.playCrownClick();
+                            }}
+                            className="p-2 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-400 hover:text-amber-400 transition-colors"
+                            title="Reset vitrine (Start fresh or restore defaults)"
+                          >
+                            <RotateCcw size={14} />
+                          </button>
+                        )}
+
+                        <button
+                          id={`edit-col-${col.id}`}
+                          onClick={() => startEditing(col)}
+                          className="p-2 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors"
+                          title="Edit collection settings"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+
+                        {collections.length > 1 && (
+                          <button
+                            id={`delete-col-${col.id}`}
+                            onClick={() => {
+                              if (
+                                confirm(
+                                  `Delete collection "${col.name}"? Timepieces inside will be reassigned to the default collection.`
+                                )
+                              ) {
+                                onDeleteCollection(col.id);
+                                horologyAudio.playCrownClick();
+                              }
+                            }}
+                            className="p-2 rounded-lg bg-neutral-800/80 hover:bg-rose-950/60 text-neutral-400 hover:text-rose-400 transition-colors"
+                            title="Delete collection"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         )}
                       </div>
                     </div>
 
-                    {/* Action buttons */}
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        id={`edit-col-${col.id}`}
-                        onClick={() => startEditing(col)}
-                        className="p-2 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors"
-                        title="Edit collection settings"
-                      >
-                        <Edit2 size={14} />
-                      </button>
-
-                      {collections.length > 1 && (
-                        <button
-                          id={`delete-col-${col.id}`}
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `Delete collection "${col.name}"? Timepieces inside will be reassigned to the default collection.`
-                              )
-                            ) {
-                              onDeleteCollection(col.id);
-                              horologyAudio.playCrownClick();
-                            }
-                          }}
-                          className="p-2 rounded-lg bg-neutral-800/80 hover:bg-rose-950/60 text-neutral-400 hover:text-rose-400 transition-colors"
-                          title="Delete collection"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
+                    {/* Expanded Watches Drawer for Relocating Individual Watches */}
+                    {isExpanded && (
+                      <div className="border-t border-neutral-800/80 bg-neutral-950/70 p-3 sm:p-4 space-y-2">
+                        <div className="flex items-center justify-between text-xs text-neutral-400 mb-1">
+                          <span className="font-mono uppercase font-bold text-amber-400 text-[11px]">
+                            Timepieces in this Vitrine:
+                          </span>
+                          <span className="text-[11px] text-neutral-500">Quick-Move to Another Vitrine</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {colWatches.map((w) => (
+                            <div
+                              key={w.id}
+                              className="p-2.5 rounded-xl bg-neutral-900/90 border border-neutral-800 flex items-center justify-between gap-2 text-xs"
+                            >
+                              <div className="truncate">
+                                <span className="font-bold text-neutral-200 block truncate">{w.brand} {w.name}</span>
+                                <span className="text-[10px] font-mono text-neutral-400">Ref. {w.reference}</span>
+                              </div>
+                              <select
+                                value={w.collectionId}
+                                onChange={(e) => {
+                                  if (onMoveWatchCollection) {
+                                    onMoveWatchCollection(w.id, e.target.value);
+                                  }
+                                }}
+                                className="px-2 py-1 rounded-lg bg-neutral-800 border border-neutral-700 text-[11px] text-neutral-200 focus:outline-none focus:border-amber-500 shrink-0"
+                              >
+                                {collections.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    Move to {c.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}

@@ -31,6 +31,28 @@ import {
 import { HOROLOGY_SOURCES, SOURCE_CATALOG_WATCHES } from "../data/sourceCatalogs";
 import { horologyAudio } from "../utils/audio";
 import { synthesizeWatchFromQuery } from "../data/fallbackHorology";
+import { sanitizeWatch } from "../utils/watchUtils";
+
+const TYPO_MAP: Record<string, string> = {
+  muesuem: "museum",
+  museam: "museum",
+  muesum: "museum",
+  submarier: "submariner",
+  submarner: "submariner",
+  patak: "patek",
+  pateck: "patek",
+  cartie: "cartier",
+  cartye: "cartier",
+  rolexx: "rolex",
+  rolx: "rolex",
+  omga: "omega",
+  omeega: "omega",
+  breitling: "breitling",
+  audemar: "audemars",
+  daytonna: "daytona",
+  speedy: "speedmaster",
+  seiko: "seiko",
+};
 
 interface WatchSearchEngineProps {
   isOpen: boolean;
@@ -88,6 +110,8 @@ export const WatchSearchEngine: React.FC<WatchSearchEngineProps> = ({
         return <Zap size={size} />;
       case "watchbase":
         return <Database size={size} />;
+      case "everywatch":
+        return <Search size={size} />;
       default:
         return <Sparkles size={size} />;
     }
@@ -107,8 +131,11 @@ export const WatchSearchEngine: React.FC<WatchSearchEngineProps> = ({
       }
 
       // 3. Category filter
-      if (selectedCategory !== "all" && w.category !== selectedCategory) {
-        return false;
+      if (selectedCategory !== "all") {
+        const normCat = (c: string) => c.toLowerCase().replace(/[\s\/-]/g, "");
+        if (!normCat(w.category).includes(normCat(selectedCategory)) && !normCat(selectedCategory).includes(normCat(w.category))) {
+          return false;
+        }
       }
 
       // 4. Movement filter
@@ -135,18 +162,43 @@ export const WatchSearchEngine: React.FC<WatchSearchEngineProps> = ({
         if (selectedPriceTier === "30k_plus" && price < 30000) return false;
       }
 
-      // 6. Search query
+      // 6. Search query with multi-token space, typo correction, and keyword support
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const matchName = w.name.toLowerCase().includes(q);
-        const matchBrand = w.brand.toLowerCase().includes(q);
-        const matchRef = w.reference.toLowerCase().includes(q);
-        const matchCaliber = (w.movement?.caliber || "").toLowerCase().includes(q);
-        const matchCategory = w.category.toLowerCase().includes(q);
-        const matchTagline = (w.facts?.tagline || "").toLowerCase().includes(q);
-        const matchHighlights = (w.facts?.keyHighlights || []).some((h) => h.toLowerCase().includes(q));
+        const qClean = searchQuery.toLowerCase().trim().replace(/[^a-z0-9\s]/g, " ");
+        const rawTokens = qClean.split(/\s+/).filter(Boolean);
+        
+        // Expand tokens with typo corrections (e.g. muesuem -> museum)
+        const tokenVariants = rawTokens.map((t) => {
+          const variants = [t];
+          if (TYPO_MAP[t]) variants.push(TYPO_MAP[t]);
+          return variants;
+        });
+        
+        const searchableText = [
+          w.brand,
+          w.name,
+          `${w.brand} ${w.name}`,
+          w.reference,
+          w.category,
+          w.movement?.type || "",
+          w.movement?.caliber || "",
+          w.facts?.tagline || "",
+          w.facts?.storyBlurb || "",
+          ...(w.facts?.keyHighlights || []),
+          w.facts?.historicalSignificance || "",
+          w.facts?.collectorLore || "",
+          w.provenanceSource || "",
+          w.sourceBadgeLabel || "",
+        ]
+          .join(" ")
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, " ");
 
-        if (!matchName && !matchBrand && !matchRef && !matchCaliber && !matchCategory && !matchTagline && !matchHighlights) {
+        // Match if for every query token, at least one of its variants (original or typo-corrected) is found
+        const matchesAllTokens = tokenVariants.every((variants) =>
+          variants.some((v) => searchableText.includes(v))
+        );
+        if (!matchesAllTokens) {
           return false;
         }
       }
@@ -176,7 +228,8 @@ export const WatchSearchEngine: React.FC<WatchSearchEngineProps> = ({
   if (!isOpen) return null;
 
   const handleAddWatch = (watch: Watch) => {
-    onAddWatchToCollection(watch, targetCollectionId);
+    const safeWatch = sanitizeWatch(watch);
+    onAddWatchToCollection(safeWatch, targetCollectionId);
     horologyAudio.playCrownClick();
     setAddedWatchIds((prev) => new Set(prev).add(watch.id));
     setTimeout(() => {
@@ -190,7 +243,7 @@ export const WatchSearchEngine: React.FC<WatchSearchEngineProps> = ({
 
   const handleInspect = (watch: Watch) => {
     horologyAudio.playCaseLid();
-    onSelectWatchForInspection(watch);
+    onSelectWatchForInspection(sanitizeWatch(watch));
   };
 
   const handleSynthesizeCustom = async () => {
@@ -213,12 +266,12 @@ export const WatchSearchEngine: React.FC<WatchSearchEngineProps> = ({
         customWatchData = synthesizeWatchFromQuery(searchQuery);
       }
 
-      const customWatch: Watch = {
+      const customWatch: Watch = sanitizeWatch({
         ...customWatchData,
         id: `watch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         collectionId: targetCollectionId,
         dateAdded: new Date().toISOString(),
-      };
+      });
 
       horologyAudio.playMinuteRepeaterGong("high");
       onSelectWatchForInspection(customWatch);
@@ -272,7 +325,7 @@ export const WatchSearchEngine: React.FC<WatchSearchEngineProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-neutral-400">
-                  Explore curated reference points, market data, and movements across 9 global horology sources.
+                  Explore curated reference points, market data, and movements across 10 global horology sources.
                 </p>
               </div>
             </div>
@@ -416,13 +469,23 @@ export const WatchSearchEngine: React.FC<WatchSearchEngineProps> = ({
                   className="bg-transparent text-neutral-200 font-semibold focus:outline-none cursor-pointer"
                 >
                   <option value="all" className="bg-neutral-900">All Categories</option>
-                  <option value="Chronograph" className="bg-neutral-900">Chronograph</option>
-                  <option value="Diver" className="bg-neutral-900">Diver</option>
                   <option value="Dress" className="bg-neutral-900">Dress</option>
+                  <option value="Chronograph" className="bg-neutral-900">Chronograph</option>
+                  <option value="Skeleton" className="bg-neutral-900">Skeleton</option>
+                  <option value="Diver" className="bg-neutral-900">Diver</option>
+                  <option value="Pilot" className="bg-neutral-900">Pilot / Aviation</option>
+                  <option value="Sport" className="bg-neutral-900">Sport</option>
+                  <option value="Vintage Swiss" className="bg-neutral-900">Vintage Swiss</option>
+                  <option value="Occasion" className="bg-neutral-900">Occasion</option>
+                  <option value="Racing" className="bg-neutral-900">Racing / Motorsport</option>
+                  <option value="Field" className="bg-neutral-900">Field / Military</option>
+                  <option value="Microbrand" className="bg-neutral-900">Microbrand / Independent</option>
                   <option value="GMT / Travel" className="bg-neutral-900">GMT / Travel</option>
                   <option value="Integrated" className="bg-neutral-900">Integrated Sports</option>
-                  <option value="Pilot" className="bg-neutral-900">Pilot / Aviation</option>
-                  <option value="Field" className="bg-neutral-900">Field / Military</option>
+                  <option value="Minimalist" className="bg-neutral-900">Minimalist / Bauhaus</option>
+                  <option value="Moonphase" className="bg-neutral-900">Moonphase</option>
+                  <option value="Worldtimer" className="bg-neutral-900">Worldtimer</option>
+                  <option value="Tank / Rectangular" className="bg-neutral-900">Tank / Rectangular</option>
                   <option value="Grand Complication" className="bg-neutral-900">Grand Complication</option>
                   <option value="Everyday" className="bg-neutral-900">Everyday</option>
                 </select>
